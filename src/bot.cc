@@ -6,6 +6,7 @@
 #include "utils.h"
 #include "ylt/coro_http/coro_http_client.hpp"
 #include "ylt/easylog.hpp"
+#include <chrono>
 #include <format>
 #include <thread>
 
@@ -13,6 +14,23 @@ namespace tgdb {
 static auto tgtext(std::string text) {
   return td_api::make_object<td_api::formattedText>(
       text, std::vector<td_api::object_ptr<td_api::textEntity>>());
+}
+
+std::string ms_to_human_readable(int64_t ms) {
+  auto seconds = ms / 1000;
+  auto minutes = seconds / 60;
+  auto hours = minutes / 60;
+  auto days = hours / 24;
+
+  if (days > 0) {
+    return std::format("{}d {}h", days, hours % 24);
+  } else if (hours > 0) {
+    return std::format("{}h {}m", hours, minutes % 60);
+  } else if (minutes > 0) {
+    return std::format("{}m {}s", minutes, seconds % 60);
+  } else {
+    return std::format("{}s", seconds);
+  }
 }
 
 void bot::process_update(int client_id,
@@ -78,8 +96,11 @@ void bot::process_update(int client_id,
                           .index_messages_in_chat(
                               chat_id, msgid,
                               [msgid2 = msg.value()->id_, this, msgid,
-                               chat_id = msg.value()->chat_id_](
-                                  int64_t _, int message_id) {
+                               chat_id = msg.value()->chat_id_,
+                               begin_time = std::chrono::steady_clock::now()
+                                                .time_since_epoch()
+                                                .count()](
+                                  int64_t _, int message_id) mutable {
                                 ELOGFMT(INFO, "update reindex progress: {} {}",
                                         message_id, msgid2);
                                 ctx.bot.send_query(
@@ -90,8 +111,16 @@ void bot::process_update(int client_id,
                                         td_api::make_object<
                                             td_api::inputMessageText>(
                                             tgtext(std::format(
-                                                "Reindex progress {}/{}",
-                                                message_id, msgid >> 20)),
+                                                "Reindex progress {}/{} ETA: "
+                                                "{}",
+                                                message_id, msgid >> 20,
+                                                ms_to_human_readable(
+                                                    (std::chrono::steady_clock::
+                                                         now()
+                                                             .time_since_epoch()
+                                                             .count() -
+                                                     begin_time) /
+                                                    message_id))),
                                             nullptr, false)),
                                     [](auto &&res) {
                                       if (res->get_id() == td_api::error::ID) {
@@ -104,6 +133,10 @@ void bot::process_update(int client_id,
                                                 "Reindex progress updated");
                                       }
                                     });
+
+                                begin_time = std::chrono::steady_clock::now()
+                                                 .time_since_epoch()
+                                                 .count();
                               })
                           .start([](auto &&) {});
                     });

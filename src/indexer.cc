@@ -169,6 +169,9 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
     }
   }
 
+  ELOGFMT(INFO, "map1: {}",
+          msg.textifyed_contents.empty() ? *msg.textifyed_contents.begin()
+                                         : "none");
   ELOGFMT(INFO, "msg indexed: {}", msg.to_string());
   ctx.message_db.put(std::to_string(id), msg);
 }
