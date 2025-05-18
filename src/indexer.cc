@@ -128,6 +128,9 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
       td_api::messageChatUpgradeFrom::ID,
       td_api::messagePinMessage::ID,
       td_api::messageChatSetMessageAutoDeleteTime::ID,
+      td_api::messageChatSetTheme::ID,
+      td_api::messageChatJoinByLink::ID,
+      td_api::messageChatSetBackground::ID
   };
 
   if (auto text = try_move_as<td_api::messageText>(message->content_)) {
