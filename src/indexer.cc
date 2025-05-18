@@ -130,8 +130,7 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
       td_api::messageChatSetMessageAutoDeleteTime::ID,
       td_api::messageChatSetTheme::ID,
       td_api::messageChatJoinByLink::ID,
-      td_api::messageChatSetBackground::ID
-  };
+      td_api::messageChatSetBackground::ID};
 
   if (auto text = try_move_as<td_api::messageText>(message->content_)) {
     msg.textifyed_contents["text"] = text->text_->text_;
@@ -243,7 +242,8 @@ async_simple::coro::Lazy<void> indexer::index_messages_in_chat(
                                             message_ids.size()));
     }
 
-    co_await async_simple::coro::collectAllPara(std::move(futures));
+    co_await async_simple::coro::collectAllWindowedPara(10, false,
+                                                        std::move(futures));
 
     if (progress_callback) {
       ELOGFMT(INFO, "calling progress callback");

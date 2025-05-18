@@ -10,7 +10,6 @@
 #include <system_error>
 #include <vector>
 
-
 namespace tgdb {
 
 struct ocr_box {
@@ -22,9 +21,6 @@ using ocr_response = std::map<std::string, ocr_box>;
 
 async_simple::coro::Lazy<std::expected<std::string, std::string>>
 ocr_client::ocr(std::string file_path) {
-  coro_http::coro_http_client client;
-
-  client.set_conn_timeout(std::chrono::seconds(30));
 
   std::ifstream file(file_path, std::ios::binary);
   if (!file) {
@@ -43,12 +39,25 @@ ocr_client::ocr(std::string file_path) {
       "\r\n" + "--" + boundary + "--\r\n";
 
   std::string content_type = "multipart/form-data; boundary=" + boundary;
+
+retry:
+  int retry_count = 0;
+  coro_http::coro_http_client client;
+  client.set_conn_timeout(std::chrono::seconds(10));
+  client.set_req_timeout(std::chrono::seconds(50));
   auto result = co_await client.async_post(
       url_, body, cinatra::req_content_type::multipart,
       {{"Content-Type", content_type},
        {"Content-Length", std::to_string(body.size())}});
 
   if (result.net_err) {
+    ELOGFMT(ERROR, "Error: {}", result.net_err.message());
+    if (retry_count < 3) {
+      retry_count++;
+      ELOGFMT(WARN, "Retrying OCR request, attempt {}", retry_count);
+      goto retry;
+    }
+
     co_return std::unexpected<std::string>(result.net_err.message());
   }
   if (auto ocr_resp = rfl::json::read<ocr_response>(result.resp_body);
@@ -62,6 +71,12 @@ ocr_client::ocr(std::string file_path) {
   } else {
     ELOGFMT(ERROR, "Failed to deserialize OCR response: {}",
             ocr_resp.error().what());
+
+    if (retry_count < 3) {
+      retry_count++;
+      ELOGFMT(WARN, "Retrying OCR request, attempt {}", retry_count);
+      goto retry;
+    }
     co_return std::unexpected<std::string>(
         "Failed to deserialize OCR response");
   }
