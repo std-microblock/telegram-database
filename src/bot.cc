@@ -124,7 +124,7 @@ void bot::process_update(int client_id,
                                                          now()
                                                              .time_since_epoch()
                                                              .count() -
-                                                     begin_time) * (msgid >>20 - message_id) / 100 / 1000
+                                                     begin_time) *((msgid >>20 )- message_id) / 100 / 1000 / 1000
                                                     ))),
                                             nullptr, false)),
                                     [](auto &&res) {
