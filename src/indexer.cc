@@ -28,10 +28,14 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
 
   if (!message) {
     ELOGFMT(INFO, "Indexing message {} as empty message", id);
-    // insert to databse
+    ctx.message_db.put(std::to_string(id), tgdb::message{
+                                               .message_id = id,
+                                               .chat_id = message->chat_id_,
+                                               .textifyed_contents = {},
+                                           });
     co_return;
   } else {
-    ELOGFMT(INFO, "Indexing message {}s", message_id);
+    ELOGFMT(INFO, "Indexing message {}", message_id);
   }
 
   auto user_id = std::move(message->sender_id_);
@@ -48,9 +52,9 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
         co_await ctx.bot.query_async<td_api::getUser>(user->user_id_);
 
     if (!user_info) {
-        ELOGFMT(ERROR, "Failed to index message {}: failed to retrieve userinfo",
-            message_id);
-        co_return;
+      ELOGFMT(ERROR, "Failed to index message {}: failed to retrieve userinfo",
+              message_id);
+      co_return;
     }
 
     if (user_info->usernames_ &&
@@ -140,7 +144,7 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
       msg.reply_to_message_id = -1;
     }
   }
- 
+
   ELOGFMT(INFO, "msg indexed: {}", msg.to_string());
   ctx.message_db.put(std::to_string(message_id), msg);
 }
@@ -157,7 +161,7 @@ async_simple::coro::Lazy<void> indexer::index_messages_in_chat(
 
     while (current <= until_id && message_ids.size() < batch_size) {
       if (ctx.message_db.has(std::to_string(current << 20))) {
- //  ELOGFMT(INFO, "Message {} already indexed", current << 20);
+        //  ELOGFMT(INFO, "Message {} already indexed", current << 20);
         current++;
         continue;
       } else {
@@ -180,8 +184,10 @@ async_simple::coro::Lazy<void> indexer::index_messages_in_chat(
 
         if (std::regex_search(messages.error(), match, regex)) {
           auto wait_time = std::stoi(match[1].str());
-          ELOGFMT(WARN, "Rate limit hit, waiting for {} seconds", wait_time + 5);
-          co_await async_simple::coro::sleep(std::chrono::seconds(wait_time + 5));
+          ELOGFMT(WARN, "Rate limit hit, waiting for {} seconds",
+                  wait_time + 5);
+          co_await async_simple::coro::sleep(
+              std::chrono::seconds(wait_time + 5));
           continue;
         }
       }

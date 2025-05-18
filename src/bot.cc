@@ -132,6 +132,14 @@ void bot::process_update(int client_id,
                       }
                     });
               }
+
+              if (content == "/ping") {
+                query_async<td_api::sendMessage>(
+                    update.message_->chat_id_, 0, nullptr, nullptr, nullptr,
+                    td_api::make_object<td_api::inputMessageText>(
+                        tgtext("Pong!"), nullptr, false))
+                    .start([](auto &&) {});
+              }
             }
 
             ctx.indexer.index_message(std::move(update.message_))
