@@ -44,7 +44,7 @@ template <typename T> struct transaction_batch {
 
 template <typename T> struct database_iterator {
   rocksdb::Iterator *iter = nullptr;
-  std::optional<typename std::map<std::string, T>::iterator> cache_iter;
+  std::optional<typename std::unordered_map<std::string, T>::iterator> cache_iter;
 
   using iterator_category = std::input_iterator_tag;
   using value_type = std::pair<const std::string, T>;
@@ -145,7 +145,7 @@ template <typename T> struct database {
   rocksdb::Options options;
   std::string db_path;
 
-  std::optional<std::map<std::string, T>> cache = std::map<std::string, T>();
+  std::optional<std::unordered_map<std::string, T>> cache = std::unordered_map<std::string, T>();
 
   database(std::string_view db_path) {
     options.create_if_missing = true;
@@ -192,9 +192,7 @@ template <typename T> struct database {
   bool has(std::string_view key) {
     if (cache) {
       auto it = cache->find(std::string(key));
-      if (it != cache->end()) {
-        return true;
-      }
+      return it != cache->end();
     } else {
       std::string value;
       rocksdb::Status s = db->Get(rocksdb::ReadOptions(), key, &value);

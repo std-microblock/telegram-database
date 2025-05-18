@@ -159,9 +159,13 @@ async_simple::coro::Lazy<void> indexer::index_messages_in_chat(
   while (current <= until_id) {
     std::vector<int64_t> message_ids;
 
+    ELOGFMT(INFO, "Acquiring missing message ids for chat {}", chat_id);
     while (current <= until_id && message_ids.size() < batch_size) {
+      if (current % 1000 == 0) {
+        ELOGFMT(INFO, "ids for chat {}: {}", chat_id,
+                current);
+      }
       if (ctx.message_db.has(std::to_string(current << 20))) {
-        //  ELOGFMT(INFO, "Message {} already indexed", current << 20);
         current++;
         continue;
       } else {
