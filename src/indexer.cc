@@ -7,6 +7,7 @@
 #include "ylt/easylog.hpp"
 
 #include "ylt/coro_http/coro_http_client.hpp"
+#include <atomic>
 #include <expected>
 #include <ranges>
 #include <regex>
@@ -15,7 +16,7 @@
 namespace tgdb {
 template <typename T> using Lazy = async_simple::coro::Lazy<T>;
 Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
-                                  int64_t id) {
+                                  int64_t id, int64_t chat_id) {
   if (id == -1) {
     if (!message) {
       ELOGFMT(ERROR, "Failed to index message: message is null");
@@ -25,23 +26,30 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
     id = message->id_;
   }
 
-  auto message_id = id;
+  if (chat_id == -1) {
+    if (message)
+      chat_id = message->chat_id_;
+    else {
+      ELOGFMT(ERROR, "Failed to index message: chat_id is null");
+      co_return;
+    }
+  }
 
   if (!message) {
     ELOGFMT(INFO, "Indexing message {} as empty message", id);
     ctx.message_db.put(std::to_string(id), tgdb::message{
                                                .message_id = id,
-                                               .chat_id = message->chat_id_,
+                                               .chat_id = chat_id,
                                                .textifyed_contents = {},
                                            });
     co_return;
   } else {
-    ELOGFMT(INFO, "Indexing message {}", message_id);
+    ELOGFMT(INFO, "Indexing message {}", id);
   }
 
   auto user_id = std::move(message->sender_id_);
   struct message msg{
-      .message_id = message_id,
+      .message_id = id,
   };
 
   msg.chat_id = message->chat_id_;
@@ -54,7 +62,7 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
 
     if (!user_info) {
       ELOGFMT(ERROR, "Failed to index message {}: failed to retrieve userinfo",
-              message_id);
+              id);
       co_return;
     }
 
@@ -65,8 +73,8 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
 
     msg.sender.nickname = user_info->first_name_ + " " + user_info->last_name_;
   } else {
-    ELOGFMT(ERROR, "Failed to index message {}: Unknown user type: {}",
-            message_id, user_id->get_id());
+    ELOGFMT(ERROR, "Failed to index message {}: Unknown user type: {}", id,
+            user_id->get_id());
     co_return;
   }
   auto send_time = message->date_;
@@ -88,11 +96,11 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
         co_return std::filesystem::path(downloaded->local_->path_).string();
       } else {
         ELOGFMT(ERROR, "Failed to download file {}, message {} skipped",
-                file->remote_->id_, message_id);
+                file->remote_->id_, id);
         co_return std::unexpected<std::string>("Failed to download file");
       }
     } else {
-      ELOGFMT(ERROR, "Failed to index message {}: Unknown file", message_id);
+      ELOGFMT(ERROR, "Failed to index message {}: Unknown file", id);
       co_return std::unexpected<std::string>("Unknown file type");
     }
   };
@@ -129,7 +137,8 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
     if (photo->caption_)
       msg.textifyed_contents["text"] = photo->caption_->text_;
 
-    if (auto image = co_await download_file(photo->photo_->sizes_.back()->photo_))
+    if (auto image =
+            co_await download_file(photo->photo_->sizes_.back()->photo_))
       co_await process_image(image.value());
   } else if (auto video =
                  try_move_as<td_api::messageVideo>(message->content_)) {
@@ -144,8 +153,8 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
                                    message->content_->get_id())) {
     msg.textifyed_contents["functional_message"] = to_string(message->content_);
   } else {
-    ELOGFMT(ERROR, "Failed to index message {}: Unknown content type: {}",
-            message_id, message->content_->get_id());
+    ELOGFMT(ERROR, "Failed to index message {}: Unknown content type: {}", id,
+            message->content_->get_id());
     co_return;
   }
 
@@ -159,7 +168,15 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
   }
 
   ELOGFMT(INFO, "msg indexed: {}", msg.to_string());
-  ctx.message_db.put(std::to_string(message_id), msg);
+  ctx.message_db.put(std::to_string(id), msg);
+}
+
+Lazy<void> indexer::index_message_batch(
+    td::tl_object_ptr<td_api::message> message, int64_t id, int64_t chat_id,
+    std::atomic_int64_t &completed_count, int total_count) {
+  co_await index_message(std::move(message), id, chat_id);
+  auto count = completed_count.fetch_add(1) + 1;
+  ELOGFMT(INFO, "Batch progress: {}/{}", count, total_count);
 }
 
 async_simple::coro::Lazy<void> indexer::index_messages_in_chat(
@@ -214,12 +231,16 @@ async_simple::coro::Lazy<void> indexer::index_messages_in_chat(
       co_return;
     }
 
+    std::atomic_int64_t completed_count = 0;
     for (int i = 0; i < messages.value()->messages_.size(); i++) {
       auto message = std::move(messages.value()->messages_[i]);
-      futures.push_back(index_message(std::move(message), message_ids[i]));
+
+      futures.push_back(index_message_batch(std::move(message), message_ids[i],
+                                            chat_id, completed_count,
+                                            message_ids.size()));
     }
 
-    co_await async_simple::coro::collectAll(std::move(futures));
+    co_await async_simple::coro::collectAllPara(std::move(futures));
 
     if (progress_callback) {
       ELOGFMT(INFO, "calling progress callback");

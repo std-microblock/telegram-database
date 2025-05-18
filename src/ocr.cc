@@ -51,13 +51,11 @@ ocr_client::ocr(std::string file_path) {
   if (result.net_err) {
     co_return std::unexpected<std::string>(result.net_err.message());
   }
-  ELOGFMT(INFO, "OCR response: {}", result.resp_body);
-
   if (auto ocr_resp = rfl::json::read<ocr_response>(result.resp_body);
       ocr_resp) {
     std::string recognized_text;
     for (const auto &pair : ocr_resp.value()) {
-      recognized_text += pair.second.rec_txt;
+      recognized_text += pair.second.rec_txt + "\n";
     }
 
     co_return recognized_text;
