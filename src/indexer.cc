@@ -129,7 +129,7 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
     if (photo->caption_)
       msg.textifyed_contents["text"] = photo->caption_->text_;
 
-    if (auto image = co_await download_file(photo->photo_->sizes_[0]->photo_))
+    if (auto image = co_await download_file(photo->photo_->sizes_.back()->photo_))
       co_await process_image(image.value());
   } else if (auto video =
                  try_move_as<td_api::messageVideo>(message->content_)) {
