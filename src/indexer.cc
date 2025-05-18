@@ -8,6 +8,7 @@
 
 #include "ylt/coro_http/coro_http_client.hpp"
 #include <expected>
+#include <ranges>
 #include <regex>
 #include <string_view>
 
@@ -162,8 +163,7 @@ async_simple::coro::Lazy<void> indexer::index_messages_in_chat(
     ELOGFMT(INFO, "Acquiring missing message ids for chat {}", chat_id);
     while (current <= until_id && message_ids.size() < batch_size) {
       if (current % 1000 == 0) {
-        ELOGFMT(INFO, "ids for chat {}: {}", chat_id,
-                current);
+        ELOGFMT(INFO, "ids for chat {}: {}", chat_id, current);
       }
       if (ctx.message_db.has(std::to_string(current << 20))) {
         current++;
@@ -174,7 +174,9 @@ async_simple::coro::Lazy<void> indexer::index_messages_in_chat(
       }
     }
 
-    ELOGFMT(INFO, "Indexing messages {}", message_ids);
+    ELOGFMT(INFO, "Indexing messages {}",
+            message_ids | std::ranges::views::transform(
+                              [](auto id) { return id >> 20; }));
 
     auto messages = co_await ctx.bot.try_query_async<td_api::getMessages>(
         chat_id, std::vector(message_ids));
