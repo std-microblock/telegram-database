@@ -40,8 +40,8 @@ ocr_client::ocr(std::string file_path) {
 
   std::string content_type = "multipart/form-data; boundary=" + boundary;
 
-retry:
   int retry_count = 0;
+retry:
   coro_http::coro_http_client client;
   client.set_conn_timeout(std::chrono::seconds(10));
   client.set_req_timeout(std::chrono::seconds(50));
