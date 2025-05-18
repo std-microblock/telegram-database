@@ -9,11 +9,16 @@
 #include <chrono>
 #include <format>
 #include <thread>
+#include "utf8.h" // Added for UTF-8 manipulation
 
 namespace tgdb {
 static auto tgtext(std::string text) {
   return td_api::make_object<td_api::formattedText>(
       text, std::vector<td_api::object_ptr<td_api::textEntity>>());
+}
+
+static auto tgtext(std::wstring text) {
+  return tgtext(std::filesystem::path(text).string());
 }
 
 std::string ms_to_human_readable(int64_t ms) {
@@ -183,6 +188,34 @@ void bot::process_update(int client_id,
             ELOGFMT(INFO, "New inline query: {}", update.query_);
             auto answer = td_api::make_object<td_api::answerInlineQuery>();
             answer->inline_query_id_ = update.id_;
+            answer->cache_time_ = 0; // Short cache time
+            answer->is_personal_ = true;
+
+            if (update.query_.empty()) {
+                // Handle empty query: send a prompt message
+                auto result =
+                    td_api::make_object<td_api::inputInlineQueryResultArticle>();
+                result->id_ = "empty_query_prompt";
+                result->title_ = "请输入搜索内容"; // "Please enter search content"
+                result->description_ = "输入关键词以搜索消息"; // "Enter keywords to search messages"
+                result->input_message_content_ =
+                    td_api::make_object<td_api::inputMessageText>(
+                        tgtext("请输入搜索内容"), nullptr, false);
+
+                answer->results_.push_back(std::move(result));
+                answer->next_offset_ = ""; // No more results
+
+                send_query(std::move(answer), [this](auto obj) {
+                    if (obj->get_id() == td_api::error::ID) {
+                        auto error = td_api::move_object_as<td_api::error>(obj);
+                        ELOGFMT(ERROR, "Error sending empty inline query prompt: {}", error->message_);
+                    } else {
+                        ELOGFMT(INFO, "Empty inline query prompted successfully");
+                    }
+                });
+                return; // Exit the handler
+            }
+            answer->inline_query_id_ = update.id_;
             answer->results_ = std::vector<
                 td_api::object_ptr<td_api::InputInlineQueryResult>>{};
 
@@ -212,19 +245,98 @@ void bot::process_update(int client_id,
                   td_api::make_object<td_api::inputInlineQueryResultArticle>();
               result->id_ = std::to_string(message.message_id);
               result->title_ = message.sender.nickname;
-              result->description_ =
-                  message.textifyed_contents.size() > 0
-                      ? message.textifyed_contents.begin()->second
-                      : "No content";
+              
+              std::string query_str = update.query_;
+              std::string content_str; 
 
-              std::string content;
-              for (auto &[key, value] : message.textifyed_contents) {
-                content += key + ": " + value + "\n";
+              for (auto &[key, _value_str] : message.textifyed_contents) {
+        
+
+                size_t found_byte_offset_in_value = _value_str.find(query_str);
+
+                if (found_byte_offset_in_value != std::string::npos) {
+                  if (content_str.size() > 0)
+                    content_str += "\n"; 
+                  size_t value_cp_total = utf8::distance(_value_str.begin(), _value_str.end());
+                  size_t query_cp_len = utf8::distance(query_str.begin(), query_str.end());
+
+                  int padding_cp_each_side = 0;
+                  if (70 > (int)query_cp_len) { // Aim for ~70 codepoints total for query + padding
+                      padding_cp_each_side = (70 - (int)query_cp_len) / 2;
+                  }
+                  padding_cp_each_side = std::min(30, padding_cp_each_side); // Cap padding
+                  padding_cp_each_side = std::max(0, padding_cp_each_side);  // Ensure non-negative
+
+                  std::string snippet_to_add;
+                  // Condition to truncate: if value is larger than ideal snippet or generally over ~60 codepoints
+                  if (value_cp_total > (query_cp_len + 2 * (size_t)padding_cp_each_side + 5) || value_cp_total > 60 ) {
+                      auto match_start_byte_it = _value_str.begin() + found_byte_offset_in_value;
+                      size_t match_start_cp_offset = utf8::distance(_value_str.begin(), match_start_byte_it);
+                      
+                      size_t snippet_start_cp = (match_start_cp_offset > (size_t)padding_cp_each_side) ?
+                                                (match_start_cp_offset - padding_cp_each_side) : 0;
+                      
+                      size_t snippet_end_cp = std::min(value_cp_total,
+                                                      match_start_cp_offset + query_cp_len + (size_t)padding_cp_each_side);
+
+                      auto snippet_start_byte_it = _value_str.begin();
+                      utf8::advance(snippet_start_byte_it, snippet_start_cp, _value_str.end());
+
+                      auto snippet_end_byte_it = _value_str.begin();
+                      utf8::advance(snippet_end_byte_it, snippet_end_cp, _value_str.end());
+                      
+                      snippet_to_add = std::string(snippet_start_byte_it, snippet_end_byte_it);
+
+                      bool add_prefix = snippet_start_cp > 0;
+                      bool add_suffix = snippet_end_cp < value_cp_total;
+                      
+                      if (add_prefix) snippet_to_add = "..." + snippet_to_add;
+                      if (add_suffix) snippet_to_add = snippet_to_add + "...";
+                  } else {
+                      snippet_to_add = _value_str;
+                  }
+                  content_str += snippet_to_add;
+                }
               }
 
-              result->input_message_content_ =
-                  td_api::make_object<td_api::inputMessageText>(tgtext(content),
-                                                                nullptr, false);
+              std::string final_description_str;
+              if (content_str.empty()) {
+                  final_description_str = "empty";
+              } else {
+                  size_t content_cp_len = utf8::distance(content_str.begin(), content_str.end());
+                  if (content_cp_len > 200) {
+                      auto desc_end_it = content_str.begin();
+                      utf8::advance(desc_end_it, 200, content_str.end());
+                      final_description_str = std::string(content_str.begin(), desc_end_it) + "...";
+                  } else {
+                      final_description_str = content_str;
+                  }
+              }
+              result->description_ = final_description_str; // Use the processed std::string
+
+              auto text_content = td_api::make_object<td_api::inputMessageText>(
+                  tgtext(content_str), nullptr, false);
+
+              text_content->text_->entities_ =
+                  std::vector<td_api::object_ptr<td_api::textEntity>>{};
+              
+              size_t current_search_pos_bytes = 0;
+              while (true) {
+                  size_t found_byte_offset = content_str.find(query_str, current_search_pos_bytes);
+                  if (found_byte_offset == std::string::npos) {
+                      break;
+                  }
+                auto text_entity = td_api::make_object<td_api::textEntity>();
+                text_entity->offset_ = utf8::distance(content_str.begin(), content_str.begin() + found_byte_offset);
+                text_entity->length_ = utf8::distance(query_str.begin(), query_str.end());
+                text_entity->type_ =
+                    td_api::make_object<td_api::textEntityTypeBold>();
+                text_content->text_->entities_.push_back(
+                    std::move(text_entity));
+                current_search_pos_bytes = found_byte_offset + query_str.length();
+              }
+
+              result->input_message_content_ = std::move(text_content);
 
               auto kbd = std::vector<std::vector<
                   td_api::object_ptr<td_api::inlineKeyboardButton>>>{};

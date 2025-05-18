@@ -6,7 +6,7 @@ includes("dependencies/yalantinglibs.lua")
 
 add_requires("tdlib", "faiss", "rocksdb", "yalantinglibs", {
     configs = { ssl = true }
-}, "gtest", "benchmark", "reflect-cpp")
+}, "gtest", "benchmark", "reflect-cpp", "utfcpp")
 set_languages("c++2b")
 set_warnings("all") 
 add_rules("plugin.compile_commands.autoupdate", {outputdir = "build"})
@@ -18,7 +18,7 @@ target("tgdb")
     set_encodings("utf-8")
 
     add_defines("NOMINMAX")
-    add_packages("tdlib", "faiss", "rocksdb", "yalantinglibs", "reflect-cpp")
+    add_packages("tdlib", "faiss", "rocksdb", "yalantinglibs", "reflect-cpp", "utfcpp")
     add_files("src/*/**.cc", "src/*.cc")
 
 target("database_test")
