@@ -15,7 +15,7 @@ add_rules("plugin.compile_commands.autoupdate", {outputdir = "build"})
 
 target("tgdb")
     set_encodings("utf-8")
-
+    set_policy("build.sanitizer.address", true)
 
     add_defines("NOMINMAX")
     add_packages("tdlib", "faiss", "rocksdb", "yalantinglibs", "reflect-cpp")
