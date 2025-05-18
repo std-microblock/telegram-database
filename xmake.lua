@@ -10,7 +10,7 @@ add_requires("tdlib", "faiss", "rocksdb", "yalantinglibs", {
 set_languages("c++2b")
 set_warnings("all") 
 add_rules("plugin.compile_commands.autoupdate", {outputdir = "build"})
--- set_toolset("ld","lld-link.exe")
+set_toolset("ld","lld-link.exe")
 -- set_policy("build.sanitizer.address", true)
 
 target("tgdb")

@@ -113,6 +113,15 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
     }
   };
 
+  constexpr static auto contentTypesFunctionalMessages = {
+      td_api::messageChatJoinByRequest::ID,
+      td_api::messageChatDeleteMember::ID,
+      td_api::messageChatUpgradeTo::ID,
+      td_api::messageChatUpgradeFrom::ID,
+      td_api::messagePinMessage::ID,
+      td_api::messageChatSetMessageAutoDeleteTime::ID,
+  };
+
   if (auto text = try_move_as<td_api::messageText>(message->content_)) {
     msg.textifyed_contents["text"] = text->text_->text_;
   } else if (auto photo =
@@ -131,6 +140,9 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
             co_await download_file(sticker->sticker_->sticker_)) {
       co_await process_image(sticker_file.value());
     }
+  } else if (std::ranges::contains(contentTypesFunctionalMessages,
+                                   message->content_->get_id())) {
+    msg.textifyed_contents["functional_message"] = to_string(message->content_);
   } else {
     ELOGFMT(ERROR, "Failed to index message {}: Unknown content type: {}",
             message_id, message->content_->get_id());
