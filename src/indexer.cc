@@ -15,6 +15,15 @@
 
 namespace tgdb {
 template <typename T> using Lazy = async_simple::coro::Lazy<T>;
+
+indexer::indexer(context &ctx) : ctx(ctx) {
+  if (ctx.cfg.ocr_config && !ctx.cfg.ocr_config->api_url.empty()) {
+    ocr_client_ = std::make_unique<OcrClient>(ctx.cfg.ocr_config->api_url);
+  } else {
+    ocr_client_ = std::make_unique<NullOcrClient>();
+  }
+}
+
 Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
                                   int64_t id, int64_t chat_id) {
   if (id == -1) {
@@ -63,7 +72,7 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
     if (!user_info) {
       ELOGFMT(ERROR, "Failed to index message {}: failed to retrieve userinfo",
               id);
-      co_return;
+    co_return;
     }
 
     if (user_info->usernames_ &&
@@ -92,11 +101,11 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
           file->id_, 1, 0, 0, true);
       if (downloaded) {
         ELOGFMT(INFO, "File {} downloaded successfully to {}", file->id_,
-                downloaded->local_->path_);
+                 downloaded->local_->path_);
         co_return std::filesystem::path(downloaded->local_->path_).string();
       } else {
         ELOGFMT(ERROR, "Failed to download file {}, message {} skipped",
-                file->remote_->id_, id);
+                 file->remote_->id_, id);
         co_return std::unexpected<std::string>("Failed to download file");
       }
     } else {
@@ -110,14 +119,18 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
       msg.textifyed_contents["image"] = "";
       co_return;
     }
-    ELOGFMT(INFO, "Performing OCR on file {}", file);
-    if (auto ocr_res = co_await ctx.ocr_client.ocr(file)) {
-      ELOGFMT(INFO, "OCR result: {}", ocr_res.value());
-      msg.textifyed_contents["image"] = ocr_res.value();
+    if (ocr_client_) {
+      ELOGFMT(INFO, "Performing OCR on file {}", file);
+      if (auto ocr_res = co_await ocr_client_->ocr(file)) {
+        ELOGFMT(INFO, "OCR result: {}", ocr_res.value());
+        msg.textifyed_contents["image"] = ocr_res.value();
+      } else {
+        ELOGFMT(ERROR, "Failed to perform OCR on file {}: {}", file,
+                ocr_res.error());
+        co_return;
+      }
     } else {
-      ELOGFMT(ERROR, "Failed to perform OCR on file {}: {}", file,
-              ocr_res.error());
-      co_return;
+      ELOGFMT(INFO, "OCR client not initialized, skipping OCR for file {}", file);
     }
   };
 
@@ -208,7 +221,7 @@ async_simple::coro::Lazy<void> indexer::index_messages_in_chat(
 
     ELOGFMT(INFO, "Indexing messages {}",
             message_ids | std::ranges::views::transform(
-                              [](auto id) { return id >> 20; }));
+                               [](auto id) { return id >> 20; }));
 
     auto messages = co_await ctx.bot.try_query_async<td_api::getMessages>(
         chat_id, std::vector(message_ids));

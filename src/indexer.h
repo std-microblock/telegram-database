@@ -2,15 +2,19 @@
 #include "bot.h"
 #include "td/telegram/td_api.h"
 #include "td/tl/TlObject.h"
+#include "ocr.h"
 
 #include "ylt/coro_http/coro_http_client.hpp"
 #include <cstdint>
+#include <memory>
 
 namespace tgdb {
 struct context;
 struct indexer {
   context &ctx;
-  indexer(context &ctx) : ctx(ctx) {}
+  std::unique_ptr<IOcrClient> ocr_client_;
+
+  indexer(context &ctx);
 
   async_simple::coro::Lazy<void>
   index_message(td::tl_object_ptr<td_api::message> message, int64_t id = -1,

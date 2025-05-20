@@ -8,10 +8,23 @@
 #include <expected>
 
 namespace tgdb {
-struct ocr_client {
-  async_simple::coro::Lazy<std::expected<std::string, std::string>> ocr(std::string file_path);
+
+class IOcrClient {
+public:
+  virtual ~IOcrClient() = default;
+  virtual async_simple::coro::Lazy<std::expected<std::string, std::string>> ocr(std::string file_path) = 0;
+};
+
+struct OcrClient : public IOcrClient {
+  OcrClient(std::string url) : url_(std::move(url)) {}
+  async_simple::coro::Lazy<std::expected<std::string, std::string>> ocr(std::string file_path) override;
 
 private:
-  const std::string url_ = "http://127.0.0.1:9003/ocr";
+  const std::string url_;
 };
+
+struct NullOcrClient : public IOcrClient {
+  async_simple::coro::Lazy<std::expected<std::string, std::string>> ocr(std::string file_path) override;
+};
+
 } // namespace tgdb

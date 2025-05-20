@@ -11,10 +11,10 @@ struct config {
   std::string device_model = "Desktop";
 
 
-//   struct ocr_config_t {
-//     std::string endpoint = "http://127.0.0.1:9003/ocr";
-//   };
+  struct ocr_config_t {
+    std::string api_url;
+  };
 
-//   std::optional<ocr_config_t> ocr_config;
+  std::optional<ocr_config_t> ocr_config;
 };
 } // namespace tgdb

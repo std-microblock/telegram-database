@@ -20,7 +20,7 @@ struct ocr_box {
 using ocr_response = std::map<std::string, ocr_box>;
 
 async_simple::coro::Lazy<std::expected<std::string, std::string>>
-ocr_client::ocr(std::string file_path) {
+OcrClient::ocr(std::string file_path) {
 
   std::ifstream file(file_path, std::ios::binary);
   if (!file) {
@@ -81,4 +81,10 @@ retry:
         "Failed to deserialize OCR response");
   }
 }
+
+async_simple::coro::Lazy<std::expected<std::string, std::string>>
+NullOcrClient::ocr(std::string file_path) {
+  co_return "";
+}
+
 } // namespace tgdb
