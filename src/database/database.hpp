@@ -80,7 +80,8 @@ template <typename T> struct database_iterator {
     auto packed_value = iter->value().ToString();
     auto value = struct_pack::deserialize<T>(packed_value);
     if (value) {
-      // current = value_type{key, value.value()};
+      // current = {key, *value};
+      throw std::runtime_error("unimplemented");
       return current;
     } else {
       throw std::runtime_error("Failed to deserialize value");

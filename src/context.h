@@ -5,6 +5,7 @@
 #include "database/database.hpp"
 #include "indexer.h"
 #include "ocr.h"
+#include "vector_db.h" // Added
 #include <memory>
 
 namespace tgdb {
@@ -14,6 +15,7 @@ struct context {
   bot bot{*this};
   indexer indexer{*this};
   std::unique_ptr<IOcrClient> ocr_client_;
+  std::unique_ptr<VectorDbService> vector_db_service_; // Added
   context() : message_db("message_db") {}
   void init();
 };

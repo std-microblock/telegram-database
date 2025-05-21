@@ -1,4 +1,5 @@
 #pragma once
+#include "ylt/struct_pack/compatible.hpp"
 #include <cstdint>
 #include <format>
 #include <optional>
@@ -22,13 +23,18 @@ struct message {
   std::unordered_map<std::string, std::string> textifyed_contents = {};
   user sender;
   int64_t reply_to_message_id = -1;
+  struct_pack::compatible<std::optional<std::string>, 1> image_file;
 
   inline std::string to_string() const {
     return std::format("message{{message_id: {}, "
                        "textifyed_contents: {}, "
-                       "sender: {}, reply_to_message_id: {}}}",
-                       message_id, textifyed_contents,
-                       sender.to_string(), reply_to_message_id);
+                       "sender: {}, reply_to_message_id: {}, "
+                        "image_file: {}}}",
+                        message_id, textifyed_contents,
+                        sender.to_string(), reply_to_message_id,
+                        image_file.has_value() ? (
+                          image_file.value().has_value() ? image_file->value() : "None"
+                        ) : "None");
   }
 };
 } // namespace tgdb

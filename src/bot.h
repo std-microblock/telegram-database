@@ -88,6 +88,9 @@ struct bot {
     return query_async<td_api::parseTextEntities>(
         std::string(text),
         td_api::make_object<td_api::textParseModeMarkdown>());
-  }
-};
-} // namespace tgdb
+   }
+
+ private:
+   async_simple::coro::Lazy<void> handle_upgrade_database_command(int64_t chat_id);
+ };
+ } // namespace tgdb

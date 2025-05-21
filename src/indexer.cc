@@ -119,6 +119,8 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
       msg.textifyed_contents["image"] = "";
       co_return;
     }
+
+    msg.image_file = file;
     if (ocr_client_) {
       ELOGFMT(INFO, "Performing OCR on file {}", file);
       if (auto ocr_res = co_await ocr_client_->ocr(file)) {

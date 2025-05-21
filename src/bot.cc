@@ -11,7 +11,6 @@
 #include <format>
 #include <thread>
 
-
 namespace tgdb {
 static auto tgtext(std::string text) {
   return td_api::make_object<td_api::formattedText>(
@@ -186,9 +185,8 @@ void bot::process_update(int client_id,
                 auto reply_to = try_get_as<td_api::messageReplyToMessage>(
                     update.message_->reply_to_);
 
-                auto mode = content.length() > 6
-                                ? content.substr(6)
-                                : std::string("db");
+                auto mode = content.length() > 6 ? content.substr(6)
+                                                 : std::string("db");
 
                 ctx.bot
                     .query_async<td_api::getMessage>(reply_to->chat_id_,
@@ -198,14 +196,14 @@ void bot::process_update(int client_id,
                       if (auto td_message = std::move(msg.value())) {
                         std::string info_text;
                         if (mode.contains("td"))
-                         info_text += to_string(td_message);
+                          info_text += to_string(td_message);
                         info_text += "\n\n";
                         // Check if message is in local databaseff
                         auto db_message =
                             ctx.message_db.get(std::to_string(td_message->id_));
                         if (db_message && mode.contains("db")) {
-                          info_text += "Indexed content:\n" +
-                                       db_message->to_string();
+                          info_text +=
+                              "Indexed content:\n" + db_message->to_string();
                         } else {
                           info_text += "Not indexed";
                         }
@@ -229,6 +227,9 @@ void bot::process_update(int client_id,
                     update.message_->chat_id_, 0, nullptr, nullptr, nullptr,
                     td_api::make_object<td_api::inputMessageText>(
                         tgtext("Pong!"), nullptr, false))
+                    .start([](auto &&) {});
+              } else if (content == "/upgradedatabase") {
+                handle_upgrade_database_command(update.message_->chat_id_)
                     .start([](auto &&) {});
               }
             }
@@ -518,3 +519,71 @@ bot::send_query_async(td_api::object_ptr<td_api::Function> f) {
   co_return result;
 }
 }; // namespace tgdb
+
+async_simple::coro::Lazy<void>
+tgdb::bot::handle_upgrade_database_command(int64_t chat_id) {
+  co_await query_async<td_api::sendMessage>(
+      chat_id, 0, nullptr, nullptr, nullptr,
+      td_api::make_object<td_api::inputMessageText>(
+          tgtext("Starting database upgrade..."), nullptr, false));
+
+  int upgraded_count = 0;
+  for (auto &[key, message] : ctx.message_db) {
+    if (!message.image_file.has_value() ||
+        !message.image_file.value().has_value() ||
+        message.image_file->value().empty()) {
+      ELOGFMT(INFO, "Message {} in chat {} is missing image_file, fetching...",
+              message.message_id >> 20, message.chat_id);
+      auto fetched_message = co_await query_async<td_api::getMessage>(
+          message.chat_id, message.message_id);
+      if (fetched_message) {
+        if (auto msg_content =
+                try_get_as<td_api::messagePhoto>(fetched_message->content_)) {
+          if (msg_content->photo_ && msg_content->photo_->sizes_.size() > 0) {
+            // Get the largest photo size
+            auto &largest_size = msg_content->photo_->sizes_.back();
+            if (largest_size->photo_ && largest_size->photo_->local_.get()) {
+              message.image_file = largest_size->photo_->local_->path_;
+              ctx.message_db.put(key, message);
+              upgraded_count++;
+              ELOGFMT(INFO, "Upgraded message {} with image file: {}",
+                      message.message_id, message.image_file->value());
+              continue;
+            }
+          }
+        } else if (auto msg_content = try_get_as<td_api::messageSticker>(
+                       fetched_message->content_)) {
+          if (msg_content->sticker_ &&
+              msg_content->sticker_->sticker_->local_.get()) {
+            message.image_file = msg_content->sticker_->sticker_->local_->path_;
+            ctx.message_db.put(key, message);
+            upgraded_count++;
+            ELOGFMT(INFO, "Upgraded message {} with document file: {}",
+                    message.message_id, message.image_file->value());
+            continue;
+          }
+        } else {
+          ELOGFMT(INFO, "Message {} in chat {} is not a photo or sticker",
+                  message.message_id, message.chat_id);
+          message.image_file = std::nullopt;
+          ctx.message_db.put(key, message);
+          continue;
+        }
+
+        ELOGFMT(WARNING,
+                "Message {} in chat {} has a image but do not have local file",
+                message.message_id, message.chat_id);
+      } else {
+        ELOGFMT(ERROR, "Failed to fetch message {} in chat {}",
+                message.message_id, message.chat_id);
+      }
+    }
+  }
+
+  co_await query_async<td_api::sendMessage>(
+      chat_id, 0, nullptr, nullptr, nullptr,
+      td_api::make_object<td_api::inputMessageText>(
+          tgtext(std::format("Database upgrade complete. {} messages upgraded.",
+                             upgraded_count)),
+          nullptr, false));
+}

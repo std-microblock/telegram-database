@@ -7,7 +7,6 @@
 #include <string_view>
 #include <thread>
 
-// Define a simple struct for testing serialization
 struct TestData {
   int id;
   std::string name;
@@ -17,19 +16,18 @@ struct TestData {
 TEST(DatabaseTest, OpenAndClose) {
   std::filesystem::path temp_dir =
       std::filesystem::temp_directory_path() / "tgdb_test_db";
-  std::filesystem::remove_all(temp_dir); // Clean up previous test runs
+  std::filesystem::remove_all(temp_dir);
 
   {
     kvdb::database db(temp_dir.string());
     auto open_result = db.open();
     ASSERT_TRUE(open_result.has_value()) << open_result.error();
     // Database should be open here
-  } // Database goes out of scope and should be closed
+  }
 
   // Check if the directory exists (RocksDB creates files in it)
   ASSERT_TRUE(std::filesystem::exists(temp_dir));
 
-  // Clean up
   std::filesystem::remove_all(temp_dir);
   ASSERT_FALSE(std::filesystem::exists(temp_dir));
 }
@@ -37,7 +35,7 @@ TEST(DatabaseTest, OpenAndClose) {
 TEST(DatabaseTest, PutAndGetRaw) {
   std::filesystem::path temp_dir =
       std::filesystem::temp_directory_path() / "tgdb_test_db_raw";
-  std::filesystem::remove_all(temp_dir); // Clean up previous test runs
+  std::filesystem::remove_all(temp_dir);
 
   {
     kvdb::database db(temp_dir.string());
@@ -55,9 +53,8 @@ TEST(DatabaseTest, PutAndGetRaw) {
     auto non_existent_value = db.get_raw("non_existent_key");
     ASSERT_FALSE(non_existent_value.has_value());
 
-  } // Database goes out of scope and should be closed
+  }
 
-  // Clean up
   std::filesystem::remove_all(temp_dir);
   ASSERT_FALSE(std::filesystem::exists(temp_dir));
 }
@@ -65,7 +62,7 @@ TEST(DatabaseTest, PutAndGetRaw) {
 TEST(DatabaseTest, PutAndGetSerialized) {
   std::filesystem::path temp_dir =
       std::filesystem::temp_directory_path() / "tgdb_test_db_serialized";
-  std::filesystem::remove_all(temp_dir); // Clean up previous test runs
+  std::filesystem::remove_all(temp_dir);
 
   {
     kvdb::database<TestData> db(temp_dir.string());
@@ -83,9 +80,8 @@ TEST(DatabaseTest, PutAndGetSerialized) {
     auto non_existent_data = db.get("non_existent_struct_key");
     ASSERT_FALSE(non_existent_data.has_value());
 
-  } // Database goes out of scope and should be closed
+  }
 
-  // Clean up
   std::filesystem::remove_all(temp_dir);
   ASSERT_FALSE(std::filesystem::exists(temp_dir));
 }
@@ -93,7 +89,7 @@ TEST(DatabaseTest, PutAndGetSerialized) {
 TEST(DatabaseTest, Remove) {
   std::filesystem::path temp_dir =
       std::filesystem::temp_directory_path() / "tgdb_test_db_remove";
-  std::filesystem::remove_all(temp_dir); // Clean up previous test runs
+  std::filesystem::remove_all(temp_dir);
 
   {
     kvdb::database db(temp_dir.string());
@@ -113,9 +109,8 @@ TEST(DatabaseTest, Remove) {
     auto retrieved_value_after_remove = db.get_raw(key);
     ASSERT_FALSE(retrieved_value_after_remove.has_value());
 
-  } // Database goes out of scope and should be closed
+  }
 
-  // Clean up
   std::filesystem::remove_all(temp_dir);
   ASSERT_FALSE(std::filesystem::exists(temp_dir));
 }
@@ -123,7 +118,7 @@ TEST(DatabaseTest, Remove) {
 TEST(DatabaseTest, Transaction) {
   std::filesystem::path temp_dir =
       std::filesystem::temp_directory_path() / "tgdb_test_db_transaction";
-  std::filesystem::remove_all(temp_dir); // Clean up previous test runs
+  std::filesystem::remove_all(temp_dir);
 
   {
     kvdb::database db(temp_dir.string());
@@ -134,7 +129,6 @@ TEST(DatabaseTest, Transaction) {
     std::string key2 = "tx_key2";
     std::string value2 = "tx_value2";
 
-    // Test successful transaction
     db.with_transaction([&](auto &tx) {
       tx.put_raw(key1, value1);
       tx.put_raw(key2, value2);
@@ -143,9 +137,8 @@ TEST(DatabaseTest, Transaction) {
     ASSERT_TRUE(get_key1_result.has_value()) << get_key1_result.error();
     auto get_key2_result = db.get_raw(key2);
     ASSERT_TRUE(get_key2_result.has_value()) << get_key2_result.error();
-  } // Database goes out of scope and should be closed
+  }
 
-  // Clean up
   std::filesystem::remove_all(temp_dir);
   ASSERT_FALSE(std::filesystem::exists(temp_dir));
 }
@@ -153,7 +146,7 @@ TEST(DatabaseTest, Transaction) {
 static void BM_DatabaseIteratorBenchmark(benchmark::State &state) {
   std::filesystem::path temp_dir =
       std::filesystem::temp_directory_path() / "tgdb_benchmark_db";
-  std::filesystem::remove_all(temp_dir); // Clean up previous test runs
+  std::filesystem::remove_all(temp_dir);
 
   std::filesystem::create_directories(temp_dir);
 
@@ -166,7 +159,6 @@ static void BM_DatabaseIteratorBenchmark(benchmark::State &state) {
       return;
     }
 
-    // Insert 1,000,000 key-value pairs
     const int num_elements = 400000;
     std::mt19937 rng(
         std::chrono::steady_clock::now().time_since_epoch().count());
@@ -179,14 +171,12 @@ static void BM_DatabaseIteratorBenchmark(benchmark::State &state) {
     }
 
     for (auto _ : state) {
-      // Iterate over the database using the new iterator and range
       for (const auto &[key, value] : db) {
         benchmark::DoNotOptimize(value.contains("abcdefgh"));
       }
     }
   }
 
-  // Clean up
   std::filesystem::remove_all(temp_dir);
 }
 
@@ -196,7 +186,7 @@ int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
   benchmark::Initialize(&argc, argv);
   if (::testing::GTEST_FLAG(filter) ==
-      "*") { // Only run benchmarks if no specific test filter is provided
+       "*") {
     benchmark::RunSpecifiedBenchmarks();
   }
   return RUN_ALL_TESTS();

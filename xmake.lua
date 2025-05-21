@@ -15,15 +15,25 @@ set_toolset("ld","lld-link.exe")
 -- set_policy("build.sanitizer.address", true)
 
 target("tgdb")
+    set_kind("binary")
     set_encodings("utf-8")
-
     add_defines("NOMINMAX")
     add_packages("tdlib", "faiss", "rocksdb", "yalantinglibs", "reflect-cpp", "utfcpp")
-    add_files("src/*/**.cc", "src/*.cc")
+    add_files("src/*.cc", "src/*/**.cc") -- Include all .cc files from src
+    set_languages("c++2b")
 
 target("database_test")
     set_kind("binary")
     add_defines("NOMINMAX")
     add_files("test/database_test.cc")
     add_packages("gtest", "rocksdb", "yalantinglibs", "benchmark")
+    set_languages("c++2b")
+
+target("vector_db_test")
+    set_kind("binary")
+    -- add_ldflags("/SUBSYSTEM:windows", {force = true})
+    add_defines("NOMINMAX")
+    add_files("test/vector_db_test.cc", "src/faiss_vector_db.cc") -- Compile test and required src files
+    add_includedirs("src") -- Ensure src headers are findable
+    add_packages("gtest", "faiss", "yalantinglibs") -- Added yalantinglibs
     set_languages("c++2b")
