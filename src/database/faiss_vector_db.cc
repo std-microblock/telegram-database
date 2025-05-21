@@ -364,4 +364,10 @@ bool FaissVectorDbService::Load(const std::string &path) {
   }
 }
 
-} 
+bool FaissVectorDbService::CreateOrLoad(const std::string &path) {
+  if (!Load(path)) {
+    return Save(path);
+  }
+  return true;
+}
+} // namespace tgdb

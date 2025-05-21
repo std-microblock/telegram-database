@@ -18,6 +18,14 @@ struct config {
 
   std::optional<ocr_config_t> ocr_config;
 
+  struct embedding_config_t {
+    std::string api_key;
+    std::string model_id = "multimodal-embedding-v1";
+    std::string provider = "dashscope"; // Can be "dashscope" or other providers in the future
+  };
+
+  std::optional<embedding_config_t> embedding_config;
+
   std::string vector_database = "faiss";
 };
 } // namespace tgdb

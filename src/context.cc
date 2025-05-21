@@ -8,6 +8,7 @@
 #include "ylt/easylog.hpp"
 
 #include "database/faiss_vector_db.h"
+#include "embedding/dashscope_embedding_service.h"
 
 void tgdb::context::init() {
   if (std::filesystem::exists("./config.json")) {
@@ -45,7 +46,7 @@ void tgdb::context::init() {
   if (cfg.vector_database == "faiss") {
     vector_db_service_ =
         std::make_unique<FaissVectorDbService>(1024, faiss::METRIC_L2);
-    if (!vector_db_service_->Load("vector_db.faiss")) {
+    if (!vector_db_service_->CreateOrLoad("vector_db.faiss")) {
       ELOGFMT(ERROR, "Failed to load vector database!");
       return;
     } else {
@@ -54,6 +55,24 @@ void tgdb::context::init() {
   } else {
     ELOGFMT(WARNING, "Invalid vector database found in config, vector database "
                      "won't be used.");
+  }
+
+  if (cfg.embedding_config) {
+    if (cfg.embedding_config->provider == "dashscope") {
+      if (cfg.embedding_config->api_key.empty()) {
+        ELOGFMT(WARNING, "DashScope API key is empty, embedding service won't be used.");
+      } else {
+        embedding_service_ = std::make_unique<DashScopeEmbeddingService>(
+            cfg.embedding_config->api_key, cfg.embedding_config->model_id);
+        ELOGFMT(INFO, "DashScope embedding service initialized with model: {}",
+                cfg.embedding_config->model_id);
+      }
+    } else {
+      ELOGFMT(WARNING, "Unknown embedding provider: {}, embedding service won't be used.",
+              cfg.embedding_config->provider);
+    }
+  } else {
+    ELOGFMT(WARNING, "No embedding configuration found, embedding service won't be used.");
   }
 
   if (vector_db_service_) {

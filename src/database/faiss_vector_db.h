@@ -23,8 +23,9 @@ public:
     bool UpdateVector(const std::string& key, const std::vector<float>& vector) override;
     bool Save(const std::string& path) override;
     bool Load(const std::string& path) override;
+    bool CreateOrLoad(const std::string &path) override;
 
-private:
+  private:
     int dimension_;
     std::unique_ptr<faiss::Index> index_;
     
