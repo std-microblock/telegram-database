@@ -3,7 +3,7 @@
 #include "cinatra/ylt/coro_io/io_context_pool.hpp"
 #include "context.h"
 #include "td/telegram/td_api.h"
-#include "utf8.h" // Added for UTF-8 manipulation
+#include "utf8.h"
 #include "utils.h"
 #include "ylt/coro_http/coro_http_client.hpp"
 #include "ylt/easylog.hpp"
@@ -43,7 +43,7 @@ void bot::process_update(int client_id,
   td_api::downcast_call(
       *object,
       overloaded(
-          // authentication part
+
           [this](td_api::updateAuthorizationState &update_authorization_state) {
             auto authorization_state_ =
                 std::move(update_authorization_state.authorization_state_);
@@ -58,7 +58,7 @@ void bot::process_update(int client_id,
                     },
                     [this](td_api::authorizationStateReady &update) {
                       ELOGFMT(INFO, "Bot logged in successfully");
-                      // Send startup message
+
                       if (ctx.cfg.chat_id != 0) {
                         std::thread([this]() {
                           std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -112,7 +112,7 @@ void bot::process_update(int client_id,
                       });
                     }));
           },
-          // message part
+
           [this](td_api::updateNewMessage &update) {
             if (auto msg = try_get_as<td_api::messageText>(
                     update.message_->content_)) {
@@ -198,7 +198,7 @@ void bot::process_update(int client_id,
                         if (mode.contains("td"))
                           info_text += to_string(td_message);
                         info_text += "\n\n";
-                        // Check if message is in local databaseff
+
                         auto db_message =
                             ctx.message_db.get(std::to_string(td_message->id_));
                         if (db_message && mode.contains("db")) {
@@ -237,29 +237,27 @@ void bot::process_update(int client_id,
             ctx.indexer.index_message(std::move(update.message_))
                 .start([](auto &&) {});
           },
-          // inline query
+
           [this](td_api::updateNewInlineQuery &update) {
             ELOGFMT(INFO, "New inline query: {}", update.query_);
             auto answer = td_api::make_object<td_api::answerInlineQuery>();
             answer->inline_query_id_ = update.id_;
-            answer->cache_time_ = 0; // Short cache time
+            answer->cache_time_ = 0;
             answer->is_personal_ = true;
 
             if (update.query_.empty()) {
-              // Handle empty query: send a prompt message
+
               auto result =
                   td_api::make_object<td_api::inputInlineQueryResultArticle>();
               result->id_ = "empty_query_prompt";
-              result->title_ =
-                  "请输入搜索内容"; // "Please enter search content"
-              result->description_ =
-                  "输入关键词以搜索消息"; // "Enter keywords to search messages"
+              result->title_ = "请输入搜索内容";
+              result->description_ = "输入关键词以搜索消息";
               result->input_message_content_ =
                   td_api::make_object<td_api::inputMessageText>(
                       tgtext("请输入搜索内容"), nullptr, false);
 
               answer->results_.push_back(std::move(result));
-              answer->next_offset_ = ""; // No more results
+              answer->next_offset_ = "";
 
               send_query(std::move(answer), [this](auto obj) {
                 if (obj->get_id() == td_api::error::ID) {
@@ -270,8 +268,20 @@ void bot::process_update(int client_id,
                   ELOGFMT(INFO, "Empty inline query prompted successfully");
                 }
               });
-              return; // Exit the handler
+              return;
             }
+
+            std::string query_str = update.query_;
+            bool use_ai_search = false;
+
+            if (query_str.starts_with("ai")) {
+
+              query_str = query_str.substr(2);
+              use_ai_search = true;
+              ELOGFMT(INFO, "Using AI search with modified query: {}",
+                      query_str);
+            }
+
             answer->inline_query_id_ = update.id_;
             answer->results_ = std::vector<
                 td_api::object_ptr<td_api::InputInlineQueryResult>>{};
@@ -283,6 +293,111 @@ void bot::process_update(int client_id,
                 update.offset_.size() ? std::stoull(update.offset_) : 0;
 
             int counter = 0;
+
+            if (use_ai_search) {
+
+              auto handle_vector_results =
+                  [this, answer = std::move(answer),
+                   query_str](std::vector<VectorSearchResult> results) mutable
+                  -> async_simple::coro::Lazy<void> {
+                ELOGFMT(INFO, "AI search returned {} results", results.size());
+
+                for (const auto &result : results) {
+                  auto &message = result.msg;
+
+                  auto article_result = td_api::make_object<
+                      td_api::inputInlineQueryResultArticle>();
+                  article_result->id_ = std::to_string(message.message_id);
+                  article_result->title_ =
+                      message.sender.nickname + " (AI Search)";
+
+                  std::string content_str;
+                  for (auto &[key, value_str] : message.textifyed_contents) {
+                    if (!value_str.empty()) {
+                      if (content_str.size() > 0)
+                        content_str += "\n";
+                      content_str += value_str;
+                    }
+                  }
+
+                  size_t content_cp_len =
+                      utf8::distance(content_str.begin(), content_str.end());
+                  std::string final_description_str;
+                  if (content_cp_len > 200) {
+                    auto desc_end_it = content_str.begin();
+                    utf8::advance(desc_end_it, 200, content_str.end());
+                    final_description_str =
+                        std::string(content_str.begin(), desc_end_it) + "...";
+                  } else {
+                    final_description_str = content_str;
+                  }
+
+                  article_result->description_ = final_description_str;
+
+                  auto text_content =
+                      td_api::make_object<td_api::inputMessageText>(
+                          tgtext(content_str), nullptr, false);
+
+                  article_result->input_message_content_ =
+                      std::move(text_content);
+
+                  auto kbd = std::vector<std::vector<
+                      td_api::object_ptr<td_api::inlineKeyboardButton>>>{};
+
+                  kbd.emplace_back();
+
+                  kbd[0].push_back(td_api::make_object<
+                                   td_api::inlineKeyboardButton>(
+                      "原消息",
+                      td_api::make_object<td_api::inlineKeyboardButtonTypeUrl>(
+                          std::format("https://t.me/c/{}/{}",
+                                      -(message.chat_id + 1e12),
+                                      message.message_id >> 20))));
+
+                  kbd[0].push_back(td_api::make_object<
+                                   td_api::inlineKeyboardButton>(
+                      "全部结果",
+                      td_api::make_object<
+                          td_api::inlineKeyboardButtonTypeSwitchInline>(
+                          query_str,
+                          td_api::make_object<td_api::targetChatCurrent>())));
+
+                  article_result->reply_markup_ =
+                      td_api::make_object<td_api::replyMarkupInlineKeyboard>(
+                          std::move(kbd));
+
+                  answer->results_.push_back(std::move(article_result));
+                }
+
+                answer->next_offset_ = "";
+
+                send_query(std::move(answer), [this,
+                                               size = answer->results_.size()](
+                                                  auto obj) {
+                  if (obj->get_id() == td_api::error::ID) {
+                    auto error = td_api::move_object_as<td_api::error>(obj);
+                    ELOGFMT(ERROR, "Error in AI search response: {}",
+                            error->message_);
+                  } else {
+                    ELOGFMT(INFO,
+                            "AI search query answered successfully, size: {}",
+                            size);
+                  }
+                });
+
+                co_return;
+              };
+
+              ctx.indexer.vector_search(query_str, 10)
+                  .start([handle_vector_results = std::move(
+                              handle_vector_results)](auto &&results) mutable {
+                    handle_vector_results(std::move(results.value()))
+                        .start([](auto &&) {});
+                  });
+
+              return;
+            }
+
             for (auto &[msgid, message] : ctx.message_db) {
               counter++;
 
@@ -291,10 +406,10 @@ void bot::process_update(int client_id,
               }
 
               if (message.textifyed_contents.size() == 0 ||
-                  std::ranges::none_of(
-                      message.textifyed_contents, [&](auto &pair) {
-                        return pair.second.contains(update.query_);
-                      })) {
+                  std::ranges::none_of(message.textifyed_contents,
+                                       [&](auto &pair) {
+                                         return pair.second.contains(query_str);
+                                       })) {
                 continue;
               }
 
@@ -303,7 +418,6 @@ void bot::process_update(int client_id,
               result->id_ = std::to_string(message.message_id);
               result->title_ = message.sender.nickname;
 
-              std::string query_str = update.query_;
               std::string content_str;
 
               for (auto &[key, _value_str] : message.textifyed_contents) {
@@ -319,18 +433,15 @@ void bot::process_update(int client_id,
                       utf8::distance(query_str.begin(), query_str.end());
 
                   int padding_cp_each_side = 0;
-                  if (70 > (int)query_cp_len) { // Aim for ~70 codepoints total
-                                                // for query + padding
+                  if (70 > (int)query_cp_len) {
+
                     padding_cp_each_side = (70 - (int)query_cp_len) / 2;
                   }
-                  padding_cp_each_side =
-                      std::min(30, padding_cp_each_side); // Cap padding
-                  padding_cp_each_side =
-                      std::max(0, padding_cp_each_side); // Ensure non-negative
+                  padding_cp_each_side = std::min(30, padding_cp_each_side);
+                  padding_cp_each_side = std::max(0, padding_cp_each_side);
 
                   std::string snippet_to_add;
-                  // Condition to truncate: if value is larger than ideal
-                  // snippet or generally over ~60 codepoints
+
                   if (value_cp_total > (query_cp_len +
                                         2 * (size_t)padding_cp_each_side + 5) ||
                       value_cp_total > 60) {
@@ -388,8 +499,7 @@ void bot::process_update(int client_id,
                   final_description_str = content_str;
                 }
               }
-              result->description_ =
-                  final_description_str; // Use the processed std::string
+              result->description_ = final_description_str;
 
               auto text_content = td_api::make_object<td_api::inputMessageText>(
                   tgtext(content_str), nullptr, false);
@@ -438,7 +548,7 @@ void bot::process_update(int client_id,
                       "全部结果",
                       td_api::make_object<
                           td_api::inlineKeyboardButtonTypeSwitchInline>(
-                          update.query_,
+                          query_str,
                           td_api::make_object<td_api::targetChatCurrent>())));
 
               result->reply_markup_ =
@@ -466,7 +576,7 @@ void bot::process_update(int client_id,
               }
             });
           },
-          // msg sent successfully
+
           [this](td_api::updateMessageSendSucceeded &update) {
             temp_msgid_map[update.old_message_id_] = update.message_->id_;
           }));
@@ -540,7 +650,7 @@ tgdb::bot::handle_upgrade_database_command(int64_t chat_id) {
         if (auto msg_content =
                 try_get_as<td_api::messagePhoto>(fetched_message->content_)) {
           if (msg_content->photo_ && msg_content->photo_->sizes_.size() > 0) {
-            // Get the largest photo size
+
             auto &largest_size = msg_content->photo_->sizes_.back();
             if (largest_size->photo_ && largest_size->photo_->local_.get()) {
               message.image_file = largest_size->photo_->local_->path_;
