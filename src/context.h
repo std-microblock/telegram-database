@@ -16,9 +16,9 @@ struct context {
   config cfg;
   bot bot{*this};
   indexer indexer{*this};
-  std::unique_ptr<IOcrClient> ocr_client_;
-  std::unique_ptr<VectorDbService> vector_db_service_;
-  std::unique_ptr<EmbeddingService> embedding_service_;
+  std::unique_ptr<IOcrClient> ocr_client_ = nullptr;
+  std::unique_ptr<VectorDbService> vector_db_service_ = nullptr;
+  std::unique_ptr<EmbeddingService> embedding_service_ = nullptr;
   context() : message_db("message_db") {}
   void init();
 };

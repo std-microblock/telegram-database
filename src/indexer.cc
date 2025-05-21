@@ -187,6 +187,66 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
   ELOGFMT(INFO, "map1: {}", msg.textifyed_contents.empty());
   ELOGFMT(INFO, "msg indexed: {}", msg.to_string());
   ctx.message_db.put(std::to_string(id), msg);
+
+  
+  if (ctx.embedding_service_ && ctx.vector_db_service_) {
+    ELOGFMT(INFO, "Generating embeddings for message {}", id);
+    
+    
+    std::vector<Content> contents;
+    
+    
+    std::string combined_text;
+    for (const auto& [type, text] : msg.textifyed_contents) {
+      if (!text.empty()) {
+        combined_text += text + " ";
+      }
+    }
+    
+    if (!combined_text.empty()) {
+      Content text_content;
+      text_content.text = combined_text;
+      contents.push_back(text_content);
+    }
+    
+    
+    if (msg.image_file.has_value() && msg.image_file.value().has_value()) {
+      Content image_content;
+      image_content.image_path = msg.image_file.value().value();
+      
+      
+      if (ctx.embedding_service_->support_aligned_image()) {
+        contents.push_back(image_content);
+      }
+    }
+    
+    
+    if (!contents.empty()) {
+      try {
+        auto embeddings = co_await ctx.embedding_service_->multimodal_embedding(contents);
+        
+        if (!embeddings.empty()) {
+          ELOGFMT(INFO, "Generated {} embeddings for message {}", embeddings.size(), id);
+          
+          
+          const std::string key = std::to_string(id);
+          
+          
+          if (ctx.vector_db_service_->AddVector(key, embeddings[0].embedding)) {
+            ELOGFMT(INFO, "Added vector embedding for message {} to vector database", id);
+          } else {
+            ELOGFMT(ERROR, "Failed to add vector embedding for message {} to vector database", id);
+          }
+        } else {
+          ELOGFMT(WARNING, "No embeddings generated for message {}", id);
+        }
+      } catch (const std::exception& e) {
+        ELOGFMT(ERROR, "Error generating embeddings for message {}: {}", id, e.what());
+      }
+    } else {
+      ELOGFMT(INFO, "No content available for embedding in message {}", id);
+    }
+  }
 }
 
 Lazy<void> indexer::index_message_batch(
@@ -284,4 +344,155 @@ async_simple::coro::Lazy<void> indexer::index_messages_in_chat(
   co_return co_await index_messages_in_chat(std::move(chat), until_id,
                                             std::move(progress_callback));
 }
-} // namespace tgdb
+
+async_simple::coro::Lazy<std::vector<VectorSearchResult>>
+indexer::vector_search(const std::string& query_text, int top_k) {
+  if (!ctx.embedding_service_ || !ctx.vector_db_service_) {
+    ELOGFMT(ERROR, "Vector search failed: embedding service or vector database not available");
+    co_return std::vector<VectorSearchResult>{};
+  }
+
+  ELOGFMT(INFO, "Performing vector search with query: {}", query_text);
+  
+  
+  std::vector<Content> contents;
+  Content text_content;
+  text_content.text = query_text;
+  contents.push_back(text_content);
+  
+  try {
+    
+    auto embeddings = co_await ctx.embedding_service_->multimodal_embedding(contents);
+    
+    if (embeddings.empty()) {
+      ELOGFMT(ERROR, "Failed to generate embedding for query text");
+      co_return std::vector<VectorSearchResult>{};
+    }
+    
+    
+    auto search_results = ctx.vector_db_service_->Search(embeddings[0].embedding, top_k);
+    ELOGFMT(INFO, "Vector search found {} results", search_results.size());
+    
+    
+    co_return co_await process_search_results(search_results);
+  } catch (const std::exception& e) {
+    ELOGFMT(ERROR, "Error during vector search: {}", e.what());
+    co_return std::vector<VectorSearchResult>{};
+  }
+}
+
+async_simple::coro::Lazy<std::vector<VectorSearchResult>>
+indexer::vector_search_image(const std::string& image_path, int top_k) {
+  if (!ctx.embedding_service_ || !ctx.vector_db_service_) {
+    ELOGFMT(ERROR, "Vector search failed: embedding service or vector database not available");
+    co_return std::vector<VectorSearchResult>{};
+  }
+  
+  if (!ctx.embedding_service_->support_aligned_image()) {
+    ELOGFMT(ERROR, "Vector search failed: embedding service does not support image embedding");
+    co_return std::vector<VectorSearchResult>{};
+  }
+
+  ELOGFMT(INFO, "Performing vector search with image: {}", image_path);
+  
+  
+  std::vector<Content> contents;
+  Content image_content;
+  image_content.image_path = image_path;
+  contents.push_back(image_content);
+  
+  try {
+    
+    auto embeddings = co_await ctx.embedding_service_->multimodal_embedding(contents);
+    
+    if (embeddings.empty()) {
+      ELOGFMT(ERROR, "Failed to generate embedding for image");
+      co_return std::vector<VectorSearchResult>{};
+    }
+    
+    
+    auto search_results = ctx.vector_db_service_->Search(embeddings[0].embedding, top_k);
+    ELOGFMT(INFO, "Vector search found {} results", search_results.size());
+    
+    
+    co_return co_await process_search_results(search_results);
+  } catch (const std::exception& e) {
+    ELOGFMT(ERROR, "Error during vector search: {}", e.what());
+    co_return std::vector<VectorSearchResult>{};
+  }
+}
+
+async_simple::coro::Lazy<std::vector<VectorSearchResult>>
+indexer::vector_search_multimodal(const std::string& query_text, const std::string& image_path, int top_k) {
+  if (!ctx.embedding_service_ || !ctx.vector_db_service_) {
+    ELOGFMT(ERROR, "Vector search failed: embedding service or vector database not available");
+    co_return std::vector<VectorSearchResult>{};
+  }
+  
+  if (!ctx.embedding_service_->support_aligned_image()) {
+    ELOGFMT(ERROR, "Vector search failed: embedding service does not support image embedding");
+    co_return std::vector<VectorSearchResult>{};
+  }
+
+  ELOGFMT(INFO, "Performing multimodal vector search with text and image");
+  
+  
+  std::vector<Content> contents;
+  
+  
+  Content text_content;
+  text_content.text = query_text;
+  contents.push_back(text_content);
+  
+  
+  Content image_content;
+  image_content.image_path = image_path;
+  contents.push_back(image_content);
+  
+  try {
+    
+    auto embeddings = co_await ctx.embedding_service_->multimodal_embedding(contents);
+    
+    if (embeddings.empty()) {
+      ELOGFMT(ERROR, "Failed to generate embedding for multimodal query");
+      co_return std::vector<VectorSearchResult>{};
+    }
+    
+    
+    auto search_results = ctx.vector_db_service_->Search(embeddings[0].embedding, top_k);
+    ELOGFMT(INFO, "Vector search found {} results", search_results.size());
+    
+    
+    co_return co_await process_search_results(search_results);
+  } catch (const std::exception& e) {
+    ELOGFMT(ERROR, "Error during vector search: {}", e.what());
+    co_return std::vector<VectorSearchResult>{};
+  }
+}
+
+async_simple::coro::Lazy<std::vector<VectorSearchResult>>
+indexer::process_search_results(const std::vector<SearchResult>& results) {
+  std::vector<VectorSearchResult> processed_results;
+  
+  for (const auto& result : results) {
+    
+    std::string message_id_str = result.key;
+    
+    
+    auto msg_opt = ctx.message_db.get(message_id_str);
+    if (!msg_opt) {
+      ELOGFMT(WARNING, "Message {} found in vector database but not in message database", message_id_str);
+      continue;
+    }
+    
+    
+    processed_results.push_back(VectorSearchResult{
+      .msg = msg_opt.value(),
+      .score = result.score
+    });
+  }
+  
+  ELOGFMT(INFO, "Processed {} search results", processed_results.size());
+  co_return processed_results;
+}
+} 

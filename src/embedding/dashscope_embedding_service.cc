@@ -55,23 +55,23 @@ tgdb::DashScopeEmbeddingService::multimodal_embedding(
     }
 
     if (!content.video_path.empty()) {
-        if (content.video_path.find("http") == std::string::npos) {
-            ELOGFMT(ERROR, "Unsupported video format: {}", content.video_path);
-            co_return std::vector<Embedding>{};
-        } else {
-            req_content["video"] = content.video_path;
-        }
+      if (content.video_path.find("http") == std::string::npos) {
+        ELOGFMT(ERROR, "Unsupported video format: {}", content.video_path);
+        co_return std::vector<Embedding>{};
+      } else {
+        req_content["video"] = content.video_path;
+      }
     }
 
     request.input.contents.push_back(req_content);
   }
 
   auto json_request = rfl::json::write(request);
-  ELOGFMT(INFO, "DashScope request: {}", json_request);
-
   coro_http::coro_http_client client;
   client.set_conn_timeout(std::chrono::seconds(10));
   client.set_req_timeout(std::chrono::seconds(50));
+
+  client.set_proxy("localhost", "9000");
 
   auto result = co_await client.async_post(
       endpoint_, json_request, cinatra::req_content_type::json,
@@ -82,11 +82,17 @@ tgdb::DashScopeEmbeddingService::multimodal_embedding(
     co_return std::vector<Embedding>{};
   }
 
+  if (result.status != 200) {
+    ELOGFMT(ERROR, "DashScope API error: {} {}", result.status,
+            result.resp_body);
+    co_return std::vector<Embedding>{};
+  }
+
   auto response_result =
       rfl::json::read<DashScopeEmbeddingResponse>(result.resp_body);
   if (!response_result) {
-    ELOGFMT(ERROR, "Failed to parse DashScope response: {}",
-            response_result.error().what());
+    ELOGFMT(ERROR, "Failed to parse DashScope response: {} {}",
+            response_result.error().what(), result.resp_body);
     co_return std::vector<Embedding>{};
   }
 
