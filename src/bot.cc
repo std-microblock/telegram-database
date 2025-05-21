@@ -208,6 +208,28 @@ void bot::process_update(int client_id,
                           info_text += "Not indexed";
                         }
 
+                        // Check if message is in vector database
+                        if (ctx.vector_db_service_->Exists(std::to_string(td_message->id_))) {
+                            auto vector_data = ctx.vector_db_service_->GetVector(std::to_string(td_message->id_));
+                            if (!vector_data.empty()) {
+                                info_text += "\n\nVector data (first 100 chars):\n";
+                                // Convert vector<float> to string representation
+                                std::string vector_str = "[";
+                                for (size_t i = 0; i < std::min((size_t)100, vector_data.size()); ++i) {
+                                    vector_str += std::to_string(vector_data[i]);
+                                    if (i < std::min((size_t)100, vector_data.size()) - 1) {
+                                        vector_str += ", ";
+                                    }
+                                }
+                                vector_str += "]";
+                                info_text += vector_str;
+                            } else {
+                                info_text += "\n\nFailed to retrieve vector data";
+                            }
+                        } else {
+                            info_text += "\n\nNot in vector database";
+                        }
+
                         auto imt =
                             td_api::make_object<td_api::inputMessageText>(
                                 tgtext(info_text), nullptr, false);

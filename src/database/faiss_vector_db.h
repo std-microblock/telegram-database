@@ -25,6 +25,9 @@ public:
     bool Load(const std::string& path) override;
     bool CreateOrLoad(const std::string &path) override;
 
+    std::vector<float> GetVector(const std::string &key) override;
+    bool Exists(const std::string &key) override;
+
   private:
     int dimension_;
     std::unique_ptr<faiss::Index> index_;

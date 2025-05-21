@@ -29,6 +29,9 @@ public:
   virtual bool Load(const std::string &path) = 0;
 
   virtual bool CreateOrLoad(const std::string &path) = 0;
+
+  virtual std::vector<float> GetVector(const std::string &key) = 0;
+  virtual bool Exists(const std::string &key) = 0;
 };
 
 } // namespace tgdb

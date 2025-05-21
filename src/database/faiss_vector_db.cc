@@ -370,4 +370,28 @@ bool FaissVectorDbService::CreateOrLoad(const std::string &path) {
   }
   return true;
 }
+
+std::vector<float> FaissVectorDbService::GetVector(const std::string &key) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  auto it = key_to_id_.find(key);
+  if (it == key_to_id_.end()) {
+    return {}; // Return empty vector if key not found
+  }
+
+  faiss::Index::idx_t faiss_id = it->second;
+  std::vector<float> vector_data(dimension_);
+  try {
+    index_->reconstruct(faiss_id, vector_data.data());
+    return vector_data;
+  } catch (const faiss::FaissException &e) {
+    ELOGFMT(ERROR, "FaissException during GetVector for key {}: {}", key, e.what());
+    return {}; // Return empty vector on error
+  }
+}
+
+bool FaissVectorDbService::Exists(const std::string &key) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return key_to_id_.count(key) > 0;
+}
+
 } // namespace tgdb
