@@ -52,8 +52,18 @@ void tgdb::context::init() {
       ELOGFMT(INFO, "vector_db loaded successfully");
     }
   } else {
-    ELOGFMT(WARNING,
-            "Invalid vector database found in config, vector database won't be used.");
+    ELOGFMT(WARNING, "Invalid vector database found in config, vector database "
+                     "won't be used.");
+  }
+
+  if (vector_db_service_) {
+    // Save the vector database every 30 seconds
+    std::thread([this]() {
+      while (true) {
+        std::this_thread::sleep_for(std::chrono::seconds(30));
+        vector_db_service_->Save("vector_db.faiss");
+      }
+    }).detach();
   }
 
   bot.init();

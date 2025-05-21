@@ -171,8 +171,15 @@ template <typename T> struct database {
           if (value) {
             cache->emplace(key, *value);
           } else {
-            return std::unexpected("Failed to deserialize value: " +
-                                   value.error());
+            // return std::unexpected("Failed to deserialize value: " +
+            //                        value.error());
+            ELOGFMT(ERROR, "Failed to deserialize value");
+            // If deserialization fails, remove the key from the database
+            if(auto res = remove(key); res.has_value()) {
+              ELOGFMT(ERROR, "Failed to remove key {}: {}", key, res.error());
+            } else {
+              ELOGFMT(INFO, "Removed key due to deserialization failure");
+            }
           }
         }
       }
