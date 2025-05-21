@@ -1,9 +1,13 @@
 #include "context.h"
-#include "rfl.hpp"
+#include "config.h"
+
+#include <filesystem>
+
 #include "rfl/DefaultIfMissing.hpp"
 #include "rfl/json/read.hpp"
 #include "ylt/easylog.hpp"
-#include <filesystem>
+
+#include "database/faiss_vector_db.h"
 
 void tgdb::context::init() {
   if (std::filesystem::exists("./config.json")) {
@@ -36,6 +40,20 @@ void tgdb::context::init() {
   } else {
     ELOGFMT(INFO, "message_db opened successfully, {} entries",
             message_db.cache->size());
+  }
+
+  if (cfg.vector_database == "faiss") {
+    vector_db_service_ =
+        std::make_unique<FaissVectorDbService>(1024, faiss::METRIC_L2);
+    if (!vector_db_service_->Load("vector_db.faiss")) {
+      ELOGFMT(ERROR, "Failed to load vector database!");
+      return;
+    } else {
+      ELOGFMT(INFO, "vector_db loaded successfully");
+    }
+  } else {
+    ELOGFMT(WARNING,
+            "Invalid vector database found in config, vector database won't be used.");
   }
 
   bot.init();
