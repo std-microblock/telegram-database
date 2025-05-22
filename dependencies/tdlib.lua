@@ -23,6 +23,12 @@ package("tdlib")
         io.replace("CMakeLists.txt", "add_subdirectory(benchmark)", "", {plain = true})
         io.replace("CMake/TdSetUpCompiler.cmake", "HAVE_STD17", "true", {plain = true})
 
+        
+        local openssl = package:dep("openssl3")
+        if not openssl:is_system() then
+            table.insert(configs, "-DOPENSSL_ROOT_DIR=" .. openssl:installdir())
+        end
+        
         local configs = {"-DBUILD_TESTING=OFF"}
         table.insert(configs, "-DCMAKE_BUILD_TYPE=" .. (package:is_debug() and "Debug" or "Release"))
         table.insert(configs, "-DBUILD_SHARED_LIBS=" .. (package:config("shared") and "ON" or "OFF"))
