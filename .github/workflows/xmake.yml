@@ -11,8 +11,11 @@ on:
 
 jobs:
   build:
-    runs-on: windows-2025
-
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    
     steps:
     - uses: actions/checkout@v4
       with:
@@ -22,33 +25,61 @@ jobs:
       with:
         xmake-version: latest
         actions-cache-folder: '.xmake-cache'
-        actions-cache-key: 'ci'
+        actions-cache-key: "ci-${{ matrix.os }}"
         package-cache: true
-        package-cache-key: windows-2025
-        # build-cache: true
-        # build-cache-key: ${{ matrix.os }}-${{ matrix.build_type }}
+        package-cache-key: "${{ matrix.os }}"
 
     - name: Xmake configure
       run: |
-        xmake config --verbose --yes --mode=releasedbg
+        # 根据不同平台配置
+        if [ "${{ runner.os }}" == "Windows" ]; then
+          xmake config --verbose --yes --mode=releasedbg --plat=windows
+        elif [ "${{ runner.os }}" == "Linux" ]; then
+          xmake config --verbose --yes --mode=releasedbg --plat=linux
+        else
+          xmake config --verbose --yes --mode=releasedbg --plat=macosx
+        fi
 
-    - name: build-releasedbg
+    - name: Build project
       run: |
         xmake b --yes --verbose tgdb
 
-    - name: Upload Artifacts
-      uses: actions/upload-artifact@v4.6.0
-      with:
-        path: ./build/windows/x64/
-        name: windows-build
-
-    - name: Create Archive
-      if: github.event_name == 'release'
+    - name: Prepare artifacts
+      shell: bash
       run: |
-        Compress-Archive -Path ./build/windows/* -DestinationPath windows-build-pdb.zip
-        Remove-Item -Path ./build/windows/x64/releasedbg/*.pdb -Force
-        Remove-Item -Path ./build/windows/x64/releasedbg/ui.lib -Force
-        Compress-Archive -Path ./build/windows/* -DestinationPath windows-build.zip
+        # 统一构建目录结构
+        mkdir -p artifacts/${{ runner.os }}
+        if [ "${{ runner.os }}" == "Windows" ]; then
+          cp -r build/windows/x64/releasedbg/* artifacts/${{ runner.os }}/
+        elif [ "${{ runner.os }}" == "Linux" ]; then
+          cp -r build/linux/x86_64/releasedbg/* artifacts/${{ runner.os }}/
+        else
+          cp -r build/macosx/arm64/releasedbg/* artifacts/${{ runner.os }}/
+        fi
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        path: artifacts/${{ runner.os }}
+        name: ${{ runner.os }}-build
+
+    - name: Create Release Assets
+      if: github.event_name == 'release'
+      shell: bash
+      run: |
+        # 创建平台特定的压缩包
+        OS_NAME=${{ runner.os }}
+        cd artifacts
+        
+        # Windows 特殊处理PDB文件
+        if [ "$OS_NAME" == "Windows" ]; then
+          mkdir pdb
+          find . -name "*.pdb" -exec mv {} pdb/ \;
+          zip -r ../${OS_NAME}-build-pdb.zip pdb
+          zip -r ../${OS_NAME}-build.zip $OS_NAME
+        else
+          zip -r ../${OS_NAME}-build.zip $OS_NAME
+        fi
 
     - name: Upload Release Assets
       if: github.event_name == 'release'
@@ -57,4 +88,6 @@ jobs:
         files: |
           windows-build.zip
           windows-build-pdb.zip
+          ubuntu-build.zip
+          macos-build.zip
         token: ${{ secrets.GITHUB_TOKEN }}
