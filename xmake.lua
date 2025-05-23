@@ -4,7 +4,7 @@ set_policy("compatibility.version", "3.0")
 includes("dependencies/tdlib.lua")
 includes("dependencies/yalantinglibs.lua")
 
-option("test", {description = "Enable test", default = false, type = "boolean"})
+option("test", {default = false})
 
 add_requires("tdlib", "faiss", "rocksdb", "yalantinglibs", "reflect-cpp", "utfcpp")
 if has_config("test") then

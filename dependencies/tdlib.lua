@@ -13,7 +13,7 @@ package("tdlib")
     add_deps("cmake", "gperf")
     add_deps("zlib", "openssl3")
 
-    add_syslinks("psapi", "Normaliz")
+    add_syslinks("psapi", "normaliz")
 
     on_install(function (package)
         if not package:config("shared") then
