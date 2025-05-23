@@ -30,11 +30,11 @@ jobs:
 
     - name: Xmake configure
       run: |
-        xmake config --verbose --yes --mode=releasedbg
+        xmake config --verbose --diagnosis --yes --mode=releasedbg
 
     - name: build-releasedbg
       run: |
-        xmake b --yes --verbose tgdb
+        xmake --verbose
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4.6.0
