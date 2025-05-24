@@ -82,6 +82,16 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
     }
 
     msg.sender.nickname = user_info->first_name_ + " " + user_info->last_name_;
+  } else if (auto chat = try_move_as<td_api::messageSenderChat>(user_id)) {
+    msg.sender.user_id = chat->chat_id_;
+    auto chat_info =
+        co_await ctx.bot.query_async<td_api::getChat>(chat->chat_id_);
+    if (!chat_info) {
+      ELOGFMT(ERROR, "Failed to index message {}: failed to retrieve chat info",
+              id);
+      co_return;
+    }
+    msg.sender.nickname = chat_info->title_;
   } else {
     ELOGFMT(ERROR, "Failed to index message {}: Unknown user type: {}", id,
             user_id->get_id());
