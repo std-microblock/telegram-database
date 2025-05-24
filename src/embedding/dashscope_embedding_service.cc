@@ -9,8 +9,15 @@
 namespace tgdb {
 
 async_simple::coro::Lazy<std::vector<Embedding>>
-tgdb::DashScopeEmbeddingService::multimodal_embedding(
-    const std::vector<Content> &contents) {
+tgdb::DashScopeEmbeddingService::multimodal_embedding_batch(
+    std::vector<Content> contents) {
+  if (contents.empty()) {
+    ELOGFMT(ERROR, "No contents provided for embedding");
+    co_return std::vector<Embedding>{};
+  } else {
+    ELOGFMT(INFO, "Batch embedding with {} contents", contents.size());
+  }
+
   DashScopeEmbeddingRequest request;
   request.model = model_id_;
 
@@ -66,6 +73,8 @@ tgdb::DashScopeEmbeddingService::multimodal_embedding(
     request.input.contents.push_back(req_content);
   }
 
+  int retry_count = 0;
+retry:
   auto json_request = rfl::json::write(request);
   coro_http::coro_http_client client;
   client.set_conn_timeout(std::chrono::seconds(10));
@@ -79,12 +88,24 @@ tgdb::DashScopeEmbeddingService::multimodal_embedding(
 
   if (result.net_err) {
     ELOGFMT(ERROR, "DashScope API error: {}", result.net_err.message());
+    if (retry_count < 3) {
+      retry_count++;
+      ELOGFMT(INFO, "Retrying DashScope API request, attempt {}", retry_count);
+      goto retry;
+    }
+
     co_return std::vector<Embedding>{};
   }
 
   if (result.status != 200) {
     ELOGFMT(ERROR, "DashScope API error: {} {}", result.status,
             result.resp_body);
+    if (retry_count < 3) {
+      retry_count++;
+      ELOGFMT(INFO, "Retrying DashScope API request, attempt {}", retry_count);
+      goto retry;
+    }
+
     co_return std::vector<Embedding>{};
   }
 
@@ -101,9 +122,14 @@ tgdb::DashScopeEmbeddingService::multimodal_embedding(
   std::vector<Embedding> embeddings;
   for (const auto &emb : response.output.embeddings) {
     Embedding embedding;
-    embedding.index = emb.index;
-    embedding.embedding = emb.embedding;
-    embedding.type = emb.type;
+    if (emb.type == "text") {
+      embedding[EmbeddingType::Text] = emb.embedding;
+    } else if (emb.type == "image") {
+      embedding[EmbeddingType::Image] = emb.embedding;
+    } else {
+      ELOGFMT(ERROR, "Unsupported embedding type: {}", emb.type);
+      co_return std::vector<Embedding>{};
+    }
     embeddings.push_back(embedding);
   }
 
