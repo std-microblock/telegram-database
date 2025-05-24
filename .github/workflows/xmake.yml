@@ -42,7 +42,7 @@ jobs:
 
     - name: Build project
       run: |
-        xmake b --yes --verbose tgdb
+        xmake --verbose
 
     - name: Prepare artifacts
       shell: bash

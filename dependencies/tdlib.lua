@@ -11,9 +11,9 @@ package("tdlib")
     add_configs("jni", {description = "Enable JNI-compatible TDLib API.", default = false, type = "boolean"})
 
     add_deps("cmake", "gperf")
-    add_deps("zlib", "openssl3")
+    add_deps("zlib", "openssl")
 
-    add_syslinks("psapi", "Normaliz")
+    add_syslinks("psapi", "normaliz")
 
     on_install(function (package)
         if not package:config("shared") then
@@ -22,12 +22,6 @@ package("tdlib")
 
         io.replace("CMakeLists.txt", "add_subdirectory(benchmark)", "", {plain = true})
         io.replace("CMake/TdSetUpCompiler.cmake", "HAVE_STD17", "true", {plain = true})
-
-        
-        local openssl = package:dep("openssl3")
-        if not openssl:is_system() then
-            table.insert(configs, "-DOPENSSL_ROOT_DIR=" .. openssl:installdir())
-        end
         
         local configs = {"-DBUILD_TESTING=OFF"}
         table.insert(configs, "-DCMAKE_BUILD_TYPE=" .. (package:is_debug() and "Debug" or "Release"))
@@ -36,6 +30,11 @@ package("tdlib")
         table.insert(configs, "-DTD_INSTALL_STATIC_LIBRARIES=" .. (package:config("shared") and "OFF" or "ON"))
         table.insert(configs, "-DTD_ENABLE_LTO=" .. (package:config("lto") and "ON" or "OFF"))
         table.insert(configs, "-DTD_ENABLE_JNI=" .. (package:config("jni") and "ON" or "OFF"))
+
+        local openssl = package:dep("openssl")
+        if not openssl:is_system() then
+            table.insert(configs, "-DOPENSSL_ROOT_DIR=" .. openssl:installdir())
+        end
         import("package.tools.cmake").install(package, configs)
     end)
 
