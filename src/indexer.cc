@@ -147,9 +147,7 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
       td_api::messageChatSetMessageAutoDeleteTime::ID,
       td_api::messageChatSetTheme::ID,
       td_api::messageChatJoinByLink::ID,
-      td_api::messageChatSetBackground::ID,
-      td_api::messageAnimation::ID,
-  };
+      td_api::messageChatSetBackground::ID};
 
   if (auto text = try_move_as<td_api::messageText>(message->content_)) {
     msg.textifyed_contents["text"] = text->text_->text_;
@@ -218,7 +216,8 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
                     venue->venue_->address_);
   } else if (std::ranges::contains(contentTypesFunctionalMessages,
                                    message->content_->get_id())) {
-    msg.textifyed_contents["functional_message"] = to_string(message->content_);
+    auto str = to_string(message->content_);
+    msg.textifyed_contents["functional_message"] = str.substr(0, str.find(' '));
   } else {
     ELOGFMT(ERROR, "Failed to index message {}: Unknown content type: {}", id,
             message->content_->get_id());
@@ -455,8 +454,8 @@ indexer::vector_search_image(const std::string &image_path, int top_k) {
       co_return std::vector<VectorSearchResult>{};
     }
 
-    auto search_results =
-        ctx.vector_db_service_->Search(embedding.value()[EmbeddingType::Image], top_k);
+    auto search_results = ctx.vector_db_service_->Search(
+        embedding.value()[EmbeddingType::Image], top_k);
     ELOGFMT(INFO, "Vector search found {} results", search_results.size());
 
     co_return co_await process_search_results(search_results);
@@ -497,8 +496,8 @@ indexer::vector_search_multimodal(const std::string &query_text,
       co_return std::vector<VectorSearchResult>{};
     }
 
-    auto search_results =
-        ctx.vector_db_service_->Search(embedding.value()[EmbeddingType::Text], top_k);
+    auto search_results = ctx.vector_db_service_->Search(
+        embedding.value()[EmbeddingType::Text], top_k);
     ELOGFMT(INFO, "Vector search found {} results", search_results.size());
 
     co_return co_await process_search_results(search_results);
