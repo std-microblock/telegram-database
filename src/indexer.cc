@@ -167,6 +167,8 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
       td_api::messageChatBoost::ID,
       td_api::messageChatAddMembers::ID,
       td_api::messageChatChangeTitle::ID,
+      td_api::messageVideoChatStarted::ID,
+      td_api::messageVideoChatEnded::ID,
   };
 
   if (auto text = try_move_as<td_api::messageText>(message->content_)) {
@@ -193,17 +195,16 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
     if (document->caption_)
       msg.textifyed_contents["text"] = document->caption_->text_;
 
-    if (auto doc_file =
-            co_await download_file(document->document_->document_)) {
-      msg.textifyed_contents["document"] = doc_file.value();
-    }
+    msg.textifyed_contents["document"] = document->document_->file_name_;
   } else if (auto audio =
                  try_move_as<td_api::messageAudio>(message->content_)) {
     if (audio->caption_)
       msg.textifyed_contents["text"] = audio->caption_->text_;
-    if (auto audio_file = co_await download_file(audio->audio_->audio_)) {
-      msg.textifyed_contents["audio"] = audio_file.value();
-    }
+
+    msg.textifyed_contents["audio"] =
+        std::format("MIME type: {}, duration: {}s, file name: {}",
+                    audio->audio_->mime_type_, audio->audio_->duration_ / 1000,
+                    audio->audio_->file_name_);
   } else if (auto voice =
                  try_move_as<td_api::messageVoiceNote>(message->content_)) {
     if (voice->caption_)
@@ -214,10 +215,8 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
   } else if (auto video_note =
                  try_move_as<td_api::messageVideoNote>(message->content_)) {
     if (video_note->video_note_->video_) {
-      if (auto video_note_file =
-              co_await download_file(video_note->video_note_->video_)) {
-        co_await process_image(video_note_file.value());
-      }
+      msg.textifyed_contents["video_note"] = std::format(
+          "Duration: {}s", video_note->video_note_->duration_ / 1000);
     }
   } else if (auto location =
                  try_move_as<td_api::messageLocation>(message->content_)) {

@@ -75,63 +75,52 @@ public:
 
   async_simple::coro::Lazy<std::expected<Embedding, std::string>>
   multimodal_embedding(Content contents) override {
-    ELOGFMT(INFO, "Running single content embedding: {}", contents);
-
-    // contents should be separated into text and image
-    if (contents.empty()) {
-      ELOGFMT(ERROR, "No contents provided for embedding");
-      co_return std::unexpected<std::string>(
-          "No contents provided for embedding");
-    }
-
-    std::vector<async_simple::coro::Lazy<Embedding>> embedding_tasks;
-    if (!contents.text.empty()) {
-      embedding_tasks.push_back(
-          task_pool.add_task(Content{.text = contents.text, .image_path = ""}));
-    }
-
     if (!contents.image_path.empty()) {
-      embedding_tasks.push_back(task_pool.add_task(
-          Content{.text = "", .image_path = contents.image_path}));
-    }
+      // we do not batch image embedding
+      auto text_content = Content{.text = contents.text};
 
-    if (embedding_tasks.empty()) {
-      ELOGFMT(ERROR, "No valid contents provided for embedding");
-      co_return std::unexpected<std::string>(
-          "No valid contents provided for embedding");
-    }
+      auto image_content = Content{.image_path = contents.image_path};
 
-    auto res =
-        co_await async_simple::coro::collectAll(std::move(embedding_tasks));
+      auto res = text_content.text.empty()
+                     ? co_await multimodal_embedding_batch(
+                           std::vector<Content>{image_content})
+                     : co_await multimodal_embedding_batch(
+                           std::vector<Content>{image_content, text_content});
 
-    Embedding embedding;
-
-    for (const auto &task : res) {
-      if (task.available()) {
-        const auto &emb = task.value();
-        for (const auto &[type, vec] : emb) {
-          embedding[type].insert(embedding[type].end(), vec.begin(), vec.end());
-        }
-      } else {
-        ELOGFMT(ERROR, "Embedding task failed");
-        co_return std::unexpected<std::string>("Embedding task failed");
+      if (res.empty()) {
+        ELOGFMT(ERROR, "Failed to generate embedding for content: {}",
+                contents);
+        co_return std::unexpected<std::string>(
+            "Failed to generate embedding for content");
       }
-    }
 
-    if (embedding.empty()) {
-      ELOGFMT(ERROR, "No embeddings generated for contents");
-      co_return std::unexpected<std::string>(
-          "No embeddings generated for contents");
+      auto embedding = Embedding{};
+      
+      embedding[EmbeddingType::Image] = res[0][EmbeddingType::Image];
+      if (res.size() == 2 && !res[1].empty()) {
+        embedding[EmbeddingType::Text] = res[1][EmbeddingType::Text];
+      }
+      co_return embedding;
+    } else if (!contents.text.empty()) {
+      auto res = co_await task_pool.add_task(std::move(contents));
+      if (res.empty()) {
+        ELOGFMT(ERROR, "Failed to generate embedding for content: {}",
+                contents);
+        co_return std::unexpected<std::string>(
+            "Failed to generate embedding for content");
+      }
+      co_return res;
+    } else {
+      ELOGFMT(ERROR, "No content provided for embedding");
+      co_return std::unexpected<std::string>("No content provided for embedding");
     }
-
-    co_return embedding;
   }
 
-  bool support_aligned_image() const override;
+    bool support_aligned_image() const override;
 
-  std::string api_key_;
-  std::string model_id_;
-  std::string endpoint_;
-};
+    std::string api_key_;
+    std::string model_id_;
+    std::string endpoint_;
+  };
 
 } // namespace tgdb
