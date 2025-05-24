@@ -90,7 +90,7 @@ retry:
     ELOGFMT(ERROR, "DashScope API error: {}", result.net_err.message());
     if (retry_count < 3) {
       retry_count++;
-      ELOGFMT(INFO, "Retrying DashScope API request, attempt {}", retry_count);
+      ELOGFMT(WARN, "Retrying DashScope API request, attempt {}", retry_count);
       goto retry;
     }
 
@@ -102,7 +102,7 @@ retry:
             result.resp_body);
     if (retry_count < 3) {
       retry_count++;
-      ELOGFMT(INFO, "Retrying DashScope API request, attempt {}", retry_count);
+      ELOGFMT(WARN, "Retrying DashScope API request, attempt {}", retry_count);
       goto retry;
     }
 

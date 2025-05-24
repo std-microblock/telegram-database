@@ -157,7 +157,17 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
       td_api::messageChatSetMessageAutoDeleteTime::ID,
       td_api::messageChatSetTheme::ID,
       td_api::messageChatJoinByLink::ID,
-      td_api::messageChatSetBackground::ID};
+      td_api::messageChatSetBackground::ID,
+      td_api::messageAnimation::ID,
+      td_api::messageGame::ID,
+      td_api::messagePoll::ID,
+      td_api::messageInvoice::ID,
+      td_api::messageCall::ID,
+      td_api::messageChatSetMessageAutoDeleteTime::ID,
+      td_api::messageChatBoost::ID,
+      td_api::messageChatAddMembers::ID,
+      td_api::messageChatChangeTitle::ID,
+  };
 
   if (auto text = try_move_as<td_api::messageText>(message->content_)) {
     msg.textifyed_contents["text"] = text->text_->text_;

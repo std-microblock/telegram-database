@@ -57,7 +57,17 @@ public:
           -> async_simple::coro::Lazy<std::vector<Embedding>> {
         ELOGFMT(DEBUG, "Running batch embedding task with {} contents: {}",
                 contents.size(), contents);
-        return multimodal_embedding_batch(std::move(contents));
+        auto contents_size = contents.size();
+        auto res = co_await multimodal_embedding_batch(std::move(contents));
+        if (res.size() != contents_size) {
+          auto msg = std::format(
+              "Batch failed or partially failed, expected {} results, got {}",
+              contents_size, res.size());
+          ELOGFMT(ERROR, "{}", msg);
+          co_return std::vector<Embedding>(contents_size, Embedding{});
+        }
+
+        co_return res;
       }};
 
   async_simple::coro::Lazy<std::vector<Embedding>>
@@ -110,7 +120,8 @@ public:
 
     if (embedding.empty()) {
       ELOGFMT(ERROR, "No embeddings generated for contents");
-      co_return std::unexpected<std::string>("No embeddings generated for contents");
+      co_return std::unexpected<std::string>(
+          "No embeddings generated for contents");
     }
 
     co_return embedding;
