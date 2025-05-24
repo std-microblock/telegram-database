@@ -11,7 +11,7 @@ package("tdlib")
     add_configs("jni", {description = "Enable JNI-compatible TDLib API.", default = false, type = "boolean"})
 
     add_deps("cmake", "gperf")
-    add_deps("zlib", "openssl")
+    add_deps("zlib", "openssl3")
 
     add_syslinks("psapi", "normaliz")
 

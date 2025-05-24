@@ -67,7 +67,7 @@ template <typename T, typename U> struct task_batch_debounce_pool {
   async_simple::coro::Lazy<U> add_task(T task) {
     auto promise = std::make_shared<async_simple::Promise<U>>();
 
-    std::unique_lock<std::mutex> lock(mutex_);
+    std::unique_lock<std::recursive_mutex> lock(mutex_);
 
     tasks.push_back(std::move(task));
     promises.push_back(promise);
@@ -99,6 +99,6 @@ template <typename T, typename U> struct task_batch_debounce_pool {
 
 private:
   bool has_pending_debounce = false;
-  std::mutex mutex_ = {};
+  std::recursive_mutex mutex_ = {};
 };
 }; // namespace tgdb

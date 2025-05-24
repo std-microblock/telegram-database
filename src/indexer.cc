@@ -169,6 +169,7 @@ Lazy<void> indexer::index_message(td::tl_object_ptr<td_api::message> message,
       td_api::messageChatChangeTitle::ID,
       td_api::messageVideoChatStarted::ID,
       td_api::messageVideoChatEnded::ID,
+      td_api::messageDice::ID,
   };
 
   if (auto text = try_move_as<td_api::messageText>(message->content_)) {
@@ -384,7 +385,7 @@ async_simple::coro::Lazy<void> indexer::index_messages_in_chat(
                                             message_ids.size()));
     }
 
-    co_await async_simple::coro::collectAllWindowedPara(10, false,
+    co_await async_simple::coro::collectAllWindowedPara(30, false,
                                                         std::move(futures));
 
     if (progress_callback) {
@@ -393,14 +394,14 @@ async_simple::coro::Lazy<void> indexer::index_messages_in_chat(
       ELOGFMT(INFO, "progress callback called");
     }
 
-    if (current < until_id) {
-      ELOGFMT(INFO,
-              "Waiting for {} seconds before indexing next batch of messages",
-              batch_interval);
-      co_await async_simple::coro::sleep(std::chrono::seconds(batch_interval));
+    // if (current < until_id) {
+    //   ELOGFMT(INFO,
+    //           "Waiting for {} seconds before indexing next batch of messages",
+    //           batch_interval);
+    //   co_await async_simple::coro::sleep(std::chrono::seconds(batch_interval));
 
-      ELOGFMT(INFO, "Continuing to index messages...");
-    }
+    //   ELOGFMT(INFO, "Continuing to index messages...");
+    // }
   }
 }
 async_simple::coro::Lazy<void> indexer::index_messages_in_chat(
